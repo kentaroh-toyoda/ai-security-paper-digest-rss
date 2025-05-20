@@ -29,9 +29,12 @@ jobs:
       run: python paper_digest.py
 
     - name: Commit and push RSS file
+      env:
+        GH_PAT: ${{ secrets.GH_PAT }}
       run: |
-        git config --global user.name "github-actions[bot]"
-        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git config --global user.name "AI Security Paper Digest Bot"
+        git config --global user.email "bot@users.noreply.github.com"
+        git remote set-url origin https://x-access-token:${GH_PAT}@github.com/${{ github.repository }}
         git add rss.xml
-        git commit -m "Update RSS feed on $(date -u +"%Y-%m-%d %H:%M:%S")" || echo "No changes to commit"
-        git push
+        git commit -m "Auto-update RSS feed"
+        git push || (echo 'Retrying in 10s...' && sleep 10 && git push)
