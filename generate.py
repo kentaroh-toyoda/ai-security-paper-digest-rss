@@ -85,8 +85,8 @@ URL: {entry.link}
 
 def write_rss_feed(entries, output_path="rss.xml"):
     fg = FeedGenerator()
-    fg.title("AI Security Digest")
-    fg.link(href="https://yourdomain.com/rss.xml")
+    fg.title("AI Security Paper Digest")
+    fg.link(href="https://kentaroh-toyoda.github.io/ai-security-paper-digest-rss/rss.xml")
     fg.description("Summarized AI security papers from arXiv")
 
     for paper in entries:
