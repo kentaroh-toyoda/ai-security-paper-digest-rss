@@ -3,8 +3,7 @@ import time
 import json
 import feedparser
 import openai
-import requests
-import datetime
+from datetime import datetime, UTC
 from feedgen.feed import FeedGenerator
 from dotenv import load_dotenv
 
@@ -23,32 +22,29 @@ ARXIV_FEEDS = [
     "https://export.arxiv.org/rss/eess.AS",
     "https://export.arxiv.org/rss/stat.ML",
 ]
-MAX_FETCH_PER_FEED = 1
-MAX_TOTAL_PROCESSED = 5
+MAX_FETCH_PER_FEED = 100
+MAX_TOTAL_PROCESSED = 10
 RSS_OUTPUT_PATH = "rss.xml"
 
 # Keywords for pre-filtering
 KEYWORDS = [
-    "adversarial", "attack", "robust", "defense", "jailbreak",
+    "adversarial", "attack", "robust", "defense", "jailbreak", 
     "poisoning", "red teaming", "spoofing", "deepfake", "steganography",
-    "prompt injection", "model extraction", "exfiltration", "security",
+    "prompt injection", "model extraction", "exfiltration", "security", 
     "privacy", "tamper", "evasion", "backdoor"
 ]
 
 # Initialize OpenAI client
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-
 def fetch_arxiv_entries(feed_url, limit=50):
     feed = feedparser.parse(feed_url)
     time.sleep(3)  # Respect arXiv rate limit
     return feed.entries[:limit]
 
-
 def is_potentially_relevant(entry, keywords):
     text = f"{entry.title} {entry.summary}".lower()
     return any(keyword in text for keyword in keywords)
-
 
 def summarize_and_tag(entry):
     prompt = f"""
@@ -87,7 +83,6 @@ URL: {entry.link}
         print("Error:", str(e))
         return {"relevant": False}
 
-
 def write_rss_feed(entries, output_path="rss.xml"):
     fg = FeedGenerator()
     fg.title("AI Security Digest")
@@ -99,12 +94,13 @@ def write_rss_feed(entries, output_path="rss.xml"):
         fe.title(paper['title'])
         fe.link(href=paper['url'])
         summary_html = "<br/>".join(f"• {s}" for s in paper["summary"])
-        fe.description(
-            f"<![CDATA[{summary_html}<br/><br/>Tags: {', '.join(paper['tags'])}]]>")
-        fe.pubDate(datetime.datetime.now(datetime.UTC))
+        tags_html = f"Tags: {', '.join(paper['tags'])}" if paper['tags'] else ""
+        link_html = f"<br/><br/><a href='{paper['url']}'>Read on arXiv</a>"
+        description = f"{summary_html}<br/><br/>{tags_html}{link_html}"
+        fe.description(description)
+        fe.pubDate(datetime.now(UTC))
 
     fg.rss_file(output_path)
-
 
 def main():
     all_entries = []
@@ -121,8 +117,7 @@ def main():
             unique_entries.append(entry)
 
     # Pre-filter entries based on keywords
-    relevant_candidates = [
-        e for e in unique_entries if is_potentially_relevant(e, KEYWORDS)]
+    relevant_candidates = [e for e in unique_entries if is_potentially_relevant(e, KEYWORDS)]
 
     processed = 0
     rss_items = []
@@ -150,7 +145,6 @@ def main():
         print(f"\n✅ RSS feed written to: {RSS_OUTPUT_PATH}")
     else:
         print("\nNo relevant papers found for RSS today.")
-
 
 if __name__ == "__main__":
     main()
