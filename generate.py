@@ -26,8 +26,8 @@ ARXIV_FEEDS = [
     "https://export.arxiv.org/rss/eess.AS",
     "https://export.arxiv.org/rss/stat.ML",
 ]
-MAX_FETCH_PER_FEED = 50
-MAX_TOTAL_PROCESSED = 10
+MAX_FETCH_PER_FEED = 100
+MAX_TOTAL_PROCESSED = 1000
 RSS_OUTPUT_PATH = "rss.xml"
 
 # Keywords for pre-filtering
