@@ -19,6 +19,7 @@ AIRTABLE_TABLE_NAME = os.getenv("AIRTABLE_TABLE_NAME")
 CUTOFF_DATE = os.getenv("CUTOFF_DATE", "2022-01-01")  # customizable cutoff
 MAX_RESULTS = 1000
 CHUNK_SIZE = 100
+LAST_INDEX_FILE = ".last_index"
 ARXIV_QUERY = (
     "(all:\"AI security\" OR all:adversarial OR all:\"prompt injection\" OR all:red teaming) "
     "AND (cat:cs.CR OR cat:cs.AI OR cat:cs.LG OR cat:cs.CL OR cat:cs.CV OR cat:eess.AS OR cat:stat.ML)"
@@ -29,8 +30,6 @@ client = openai.OpenAI(api_key=OPENAI_API_KEY)
 CUTOFF_DATE = datetime.strptime(CUTOFF_DATE, "%Y-%m-%d")
 
 # --- GPT FUNCTION ---
-
-
 def summarize_and_tag(title, summary, link):
     prompt = f"""
 You are an AI assistant filtering arXiv papers for relevance to AI security.
@@ -65,8 +64,6 @@ URL: {link}
         return {"relevant": False}
 
 # --- AIRTABLE PUSH ---
-
-
 def send_to_airtable(entry):
     title = entry['title']
     check_url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}?filterByFormula=URL='{entry['url']}'"
@@ -90,19 +87,20 @@ def send_to_airtable(entry):
             "Date": entry['date']
         }
     }
-    res = requests.post(
-        f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}", headers=headers, json=data)
+    res = requests.post(f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}", headers=headers, json=data)
     if res.ok:
         print(f"✅ Added: {title}")
     else:
         print(f"❌ Failed to add: {title}\n{res.text}")
 
 # --- FETCH LOOP ---
-
-
 def fetch_and_process():
     base_url = "http://export.arxiv.org/api/query"
     start = 0
+    if os.path.exists(LAST_INDEX_FILE):
+        with open(LAST_INDEX_FILE, "r") as f:
+            start = int(f.read().strip())
+
     processed = 0
 
     while processed < MAX_RESULTS:
@@ -121,8 +119,7 @@ def fetch_and_process():
                 print(f"🛑 Reached cutoff date: {entry.published}")
                 return
 
-            authors = [a.name for a in entry.authors] if hasattr(
-                entry, 'authors') else []
+            authors = [a.name for a in entry.authors] if hasattr(entry, 'authors') else []
             result = summarize_and_tag(entry.title, entry.summary, entry.link)
 
             if result.get("relevant"):
@@ -141,8 +138,12 @@ def fetch_and_process():
 
         start += CHUNK_SIZE
         processed += len(feed.entries)
-        time.sleep(3)  # Respect arXiv rate limit
 
+        # Save progress
+        with open(LAST_INDEX_FILE, "w") as f:
+            f.write(str(start))
+
+        time.sleep(3)  # Respect arXiv rate limit
 
 if __name__ == "__main__":
     fetch_and_process()
