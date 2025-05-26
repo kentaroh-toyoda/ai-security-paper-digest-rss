@@ -13,17 +13,22 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 SEARCH_TERM = "LLM red teaming"
 MIN_RELEVANCE = 1
+GPT_CACHE_FILE = ".gpt_filter_cache.json"
+gpt_cost_per_1k = 0.01
 
-gpt_cost_per_1k = 0.01  # estimated cost per 1K tokens for GPT-4.1
-
+total_tokens_used = 0
 headers = {
     "Authorization": f"Bearer {AIRTABLE_TOKEN}",
     "Content-Type": "application/json",
 }
-
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-total_tokens_used = 0
+# Load existing cache
+if os.path.exists(GPT_CACHE_FILE):
+    with open(GPT_CACHE_FILE, "r") as f:
+        gpt_filter_cache = json.load(f)
+else:
+    gpt_filter_cache = {}
 
 def fetch_all_records():
     url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
@@ -51,6 +56,10 @@ def fetch_all_records():
 
 def gpt_filter(paper, topic):
     global total_tokens_used
+    cache_key = paper['url']
+    if cache_key in gpt_filter_cache:
+        return gpt_filter_cache[cache_key]
+
     prompt = f"""
 You are an expert assistant helping filter research papers relevant to the topic: "{topic}".
 
@@ -73,8 +82,9 @@ Tags: {paper['tags']}
             temperature=0.1,
         )
         total_tokens_used += response.usage.total_tokens
-        result = response.choices[0].message.content.strip()
-        return json.loads(result)
+        result = json.loads(response.choices[0].message.content.strip())
+        gpt_filter_cache[cache_key] = result
+        return result
     except Exception as e:
         print(f"❌ GPT error for paper: {paper['title']}\n{e}")
         return {"relevant": False, "reason": "error"}
@@ -113,3 +123,7 @@ if __name__ == "__main__":
 
     print(f"\n🧾 Total GPT tokens used: {total_tokens_used:,}")
     print(f"💵 Estimated cost: ${total_tokens_used / 1000 * gpt_cost_per_1k:.4f} USD")
+
+    # Save updated cache
+    with open(GPT_CACHE_FILE, "w") as f:
+        json.dump(gpt_filter_cache, f, indent=2)
