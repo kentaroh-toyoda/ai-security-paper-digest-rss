@@ -56,12 +56,20 @@ URL: {link}
         print(f"❌ GPT error on: {title}\n{e}")
         return {"relevant": False}
 
+# --- Check if paper already exists by title ---
+def paper_exists(title):
+    url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
+    params = {"filterByFormula": f"{{Title}}='{title.replace("'", "\\'")}'"}
+    res = requests.get(url, headers=HEADERS, params=params)
+    if res.ok:
+        records = res.json().get("records", [])
+        return len(records) > 0
+    return False
+
 # --- AIRTABLE PUSH ---
 def send_to_airtable(entry, topic):
-    check_url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}?filterByFormula=URL='{entry['url']}'"
-    check = requests.get(check_url, headers=HEADERS)
-    if check.ok and check.json().get("records"):
-        print(f"⚠️ Already exists: {entry['title']}")
+    if paper_exists(entry['title']):
+        print(f"⚠️ Duplicate title, skipping: {entry['title']}")
         return
 
     data = {
