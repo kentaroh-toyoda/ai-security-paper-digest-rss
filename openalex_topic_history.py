@@ -5,7 +5,7 @@ import requests
 import openai
 import argparse
 from datetime import datetime
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlparse
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -56,10 +56,17 @@ URL: {link}
         print(f"❌ GPT error on: {title}\n{e}")
         return {"relevant": False}
 
-# --- Check if paper already exists by title ---
-def paper_exists(title):
+# --- Extract arXiv-like ID from URL ---
+def extract_id_from_url(url):
+    if url and "arxiv.org" in url:
+        return url.split("/")[-1]
+    return url  # fallback to full URL for non-arxiv sources
+
+# --- Check if paper already exists by unique ID ---
+def paper_exists_by_id(unique_id):
+    filter_formula = f"SEARCH('{unique_id}', {{URL}})"
     url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
-    params = {"filterByFormula": f"{{Title}}='{title.replace("'", "\\'")}'"}
+    params = {"filterByFormula": filter_formula}
     res = requests.get(url, headers=HEADERS, params=params)
     if res.ok:
         records = res.json().get("records", [])
@@ -68,8 +75,9 @@ def paper_exists(title):
 
 # --- AIRTABLE PUSH ---
 def send_to_airtable(entry, topic):
-    if paper_exists(entry['title']):
-        print(f"⚠️ Duplicate title, skipping: {entry['title']}")
+    unique_id = extract_id_from_url(entry['url'])
+    if paper_exists_by_id(unique_id):
+        print(f"⚠️ Duplicate based on ID '{unique_id}', skipping: {entry['title']}")
         return
 
     data = {
