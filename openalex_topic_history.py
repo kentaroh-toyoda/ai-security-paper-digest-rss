@@ -17,9 +17,6 @@ AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID")
 AIRTABLE_TABLE_NAME = os.getenv("AIRTABLE_TABLE_NAME")
 OPENALEX_EMAIL = os.getenv("OPENALEX_EMAIL")
 
-START_DATE = os.getenv("START_DATE", "2022-01-01")  # format YYYY-MM-DD
-MAX_PAGES = int(os.getenv("MAX_PAGES", 10))
-
 HEADERS = {
     "Authorization": f"Bearer {AIRTABLE_TOKEN}",
     "Content-Type": "application/json",
@@ -100,11 +97,11 @@ def send_to_airtable(entry, topic):
         print(f"❌ Failed to add: {entry['title']}\n{response.text}")
 
 # --- FETCH LOOP ---
-def fetch_openalex_results(topic):
+def fetch_openalex_results(topic, start_date, max_pages):
     base_url = "https://api.openalex.org/works"
     params = {
         "search": topic,
-        "filter": f"from_publication_date:{START_DATE}",
+        "filter": f"from_publication_date:{start_date}",
         "per-page": 50,
         "sort": "publication_date:desc"
     }
@@ -112,7 +109,7 @@ def fetch_openalex_results(topic):
     page = 1
     processed = 0
 
-    while page <= MAX_PAGES:
+    while page <= max_pages:
         print(f"🔎 Fetching OpenAlex page {page} for topic: '{topic}'...")
         res = requests.get(base_url, params={**params, "page": page})
         if not res.ok:
@@ -154,6 +151,8 @@ def fetch_openalex_results(topic):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--topic", type=str, required=True, help="Research topic to query OpenAlex for")
+    parser.add_argument("--start-date", type=str, default="2022-01-01", help="Start publication date")
+    parser.add_argument("--max-pages", type=int, default=5, help="Maximum number of pages to fetch")
     args = parser.parse_args()
 
-    fetch_openalex_results(args.topic)
+    fetch_openalex_results(args.topic, args.start_date, args.max_pages)
