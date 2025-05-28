@@ -1,66 +1,34 @@
 import os
 import time
 import json
-import feedparser
-import openai
 import requests
-from datetime import datetime, UTC
+import openai
+from datetime import datetime, timedelta
 from feedgen.feed import FeedGenerator
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Load API keys
+# --- CONFIGURATION ---
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 AIRTABLE_TOKEN = os.getenv("AIRTABLE_TOKEN")
 AIRTABLE_BASE_ID = os.getenv("AIRTABLE_BASE_ID")
 AIRTABLE_TABLE_NAME = os.getenv("AIRTABLE_TABLE_NAME")
+OPENALEX_EMAIL = os.getenv("OPENALEX_EMAIL")
 
-# Config
-ARXIV_FEEDS = [
-    "https://export.arxiv.org/rss/cs.AI",
-    "https://export.arxiv.org/rss/cs.LG",
-    "https://export.arxiv.org/rss/cs.CL",
-    "https://export.arxiv.org/rss/cs.CR",
-    "https://export.arxiv.org/rss/cs.CV",
-    "https://export.arxiv.org/rss/eess.AS",
-    "https://export.arxiv.org/rss/stat.ML",
-]
-MAX_FETCH_PER_FEED = 100
-MAX_TOTAL_PROCESSED = 1000
-RSS_OUTPUT_PATH = "rss.xml"
+HEADERS = {
+    "Authorization": f"Bearer {AIRTABLE_TOKEN}",
+    "Content-Type": "application/json",
+}
 
-# Keywords for pre-filtering
-KEYWORDS = [
-    "adversarial", "attack", "robust", "defense", "jailbreak", 
-    "poisoning", "red teaming", "spoofing", "deepfake", "steganography",
-    "prompt injection", "model extraction", "exfiltration", "security", 
-    "privacy", "tamper", "evasion", "backdoor"
-]
-
-# Initialize OpenAI client
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
-def fetch_arxiv_entries(feed_url, limit=50):
-    feed = feedparser.parse(feed_url)
-    time.sleep(3)  # Respect arXiv rate limit
-    return feed.entries[:limit]
-
-def is_potentially_relevant(entry, keywords):
-    text = f"{entry.title} {entry.summary}".lower()
-    return any(keyword in text for keyword in keywords)
-
-def summarize_and_tag(entry):
+# --- GPT TAGGING FUNCTION ---
+def summarize_and_tag(title, abstract, link):
     prompt = f"""
-You are an AI assistant filtering arXiv papers for relevance to AI security.
+You are an AI assistant filtering research papers for relevance to AI security.
 
-Evaluate the following paper. Only return `relevant: true` if the paper clearly addresses **AI security**, including but not limited to adversarial attacks, prompt injection, jailbreaks, LLM misuse, red teaming, model theft, evasion, poisoning, or robustness under attack.
-
-Avoid false positives. If the paper is not clearly about these topics, set `relevant: false`.
-
-Additionally, return a numeric relevance level between 1 (barely relevant) and 5 (extremely relevant).
-
-Return JSON only in the following format:
+Evaluate the following paper and return strict JSON:
 {{
   "relevant": true or false,
   "summary": ["..."],
@@ -68,128 +36,128 @@ Return JSON only in the following format:
   "relevance": 1 to 5
 }}
 
-Title: {entry.title}
-Abstract: {entry.summary}
-URL: {entry.link}
+---
+Title: {title}
+Abstract: {abstract}
+URL: {link}
 """
-
-    response = client.chat.completions.create(
-        model="gpt-4.1",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.1,
-    )
-
-    content = response.choices[0].message.content.strip()
-
     try:
-        result = json.loads(content)
-        return result
+        response = client.chat.completions.create(
+            model="gpt-4.1",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1,
+        )
+        return json.loads(response.choices[0].message.content.strip())
     except Exception as e:
-        print(f"\n❌ Failed to parse response for: {entry.title}")
-        print("Raw GPT output:\n", content)
-        print("Error:", str(e))
+        print(f"❌ GPT error on: {title}\n{e}")
         return {"relevant": False}
 
-def write_rss_feed(entries, output_path="rss.xml"):
+# --- FETCH FROM OPENALEX ---
+def fetch_openalex_today():
+    base_url = "https://api.openalex.org/works"
+    since = (datetime.utcnow() - timedelta(days=1)).date().isoformat()
+    params = {
+        "filter": f"from_publication_date:{since}",
+        "per-page": 50,
+        "sort": "publication_date:desc",
+        "mailto": OPENALEX_EMAIL,
+    }
+    res = requests.get(base_url, params=params)
+    if res.ok:
+        return res.json().get("results", [])
+    else:
+        print("❌ OpenAlex request failed:", res.text)
+        return []
+
+# --- Check for existing papers in Airtable by URL ---
+def paper_exists_by_url(url):
+    filter_formula = f"SEARCH('{url}', {{URL}})"
+    airtable_url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
+    params = {"filterByFormula": filter_formula}
+    res = requests.get(airtable_url, headers=HEADERS, params=params)
+    if res.ok:
+        records = res.json().get("records", [])
+        return len(records) > 0
+    return False
+
+# --- Send Paper to Airtable ---
+def send_to_airtable(entry):
+    if paper_exists_by_url(entry['url']):
+        print(f"⚠️ Already exists in Airtable, skipping: {entry['title']}")
+        return
+    data = {
+        "fields": {
+            "Title": entry['title'],
+            "URL": entry['url'],
+            "Summary": "\n".join(entry['summary']),
+            "Tags": ", ".join(entry['tags']),
+            "Authors": ", ".join(entry['authors']),
+            "Relevance": entry['relevance'],
+            "Date": entry['date'],
+            "Source": "OpenAlex"
+        }
+    }
+    response = requests.post(
+        f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}",
+        headers=HEADERS,
+        json=data
+    )
+    if response.ok:
+        print(f"✅ Added to Airtable: {entry['title']}")
+    else:
+        print(f"❌ Airtable push failed for: {entry['title']}\n{response.text}")
+
+# --- Generate RSS Feed ---
+def generate_rss(papers):
     fg = FeedGenerator()
     fg.title("AI Security Paper Digest")
     fg.link(href="https://kentaroh-toyoda.github.io/ai-security-paper-digest-rss/rss.xml")
-    fg.description("Summarized AI security papers from arXiv")
+    fg.description("Daily digest of AI security research papers")
+    fg.language("en")
 
-    for paper in entries:
+    for entry in papers:
         fe = fg.add_entry()
-        fe.title(paper['title'])
-        fe.link(href=paper['url'])
-        summary_html = "<br/>".join(f"• {s}" for s in paper["summary"])
-        tags_html = f"Tags: {', '.join(paper['tags'])}" if paper['tags'] else ""
-        authors_html = f"Authors: {', '.join(paper['authors'])}" if paper.get('authors') else ""
-        relevance_html = f"Relevance: {paper.get('relevance', '?')} / 5"
-        link_html = f"<br/><br/><a href='{paper['url']}'>Read on arXiv</a>"
-        description = f"{summary_html}<br/><br/>{tags_html}<br/>{authors_html}<br/>{relevance_html}{link_html}"
-        fe.description(description)
-        fe.pubDate(datetime.now(UTC))
+        fe.title(entry['title'])
+        fe.link(href=entry['url'])
+        fe.description("\n".join(entry['summary']) + f"\n\nTags: {', '.join(entry['tags'])}")
+        fe.pubDate(entry['date'])
 
-    fg.rss_file(output_path)
+    fg.rss_file("rss.xml")
+    print("✅ RSS file generated.")
 
-def send_to_airtable(title, url, summary, tags, authors, relevance):
-    check_url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}?filterByFormula=URL='{url}'"
-    headers = {
-        "Authorization": f"Bearer {AIRTABLE_TOKEN}",
-        "Content-Type": "application/json",
-    }
-    check = requests.get(check_url, headers=headers)
-    if check.ok and check.json().get("records"):
-        print(f"⚠️ Skipping duplicate entry in Airtable: {title}")
-        return
-
-    data = {
-        "fields": {
-            "Title": title,
-            "URL": url,
-            "Summary": "\n".join(summary),
-            "Tags": ", ".join(tags),
-            "Authors": authors,
-            "Relevance": relevance,
-            "Date": datetime.now(UTC).strftime("%Y-%m-%d")
-        }
-    }
-    response = requests.post(f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}", headers=headers, json=data)
-    if not response.ok:
-        print(f"❌ Airtable push failed for: {title}\n{response.text}")
-    else:
-        print(f"✅ Airtable entry added: {title}")
-
-def main():
-    all_entries = []
-    for feed_url in ARXIV_FEEDS:
-        entries = fetch_arxiv_entries(feed_url, MAX_FETCH_PER_FEED)
-        all_entries.extend(entries)
-
-    seen = set()
-    unique_entries = []
-    for entry in all_entries:
-        if entry.title not in seen:
-            seen.add(entry.title)
-            unique_entries.append(entry)
-
-    relevant_candidates = [e for e in unique_entries if is_potentially_relevant(e, KEYWORDS)]
-
-    processed = 0
-    rss_items = []
-    for entry in relevant_candidates:
-        if processed >= MAX_TOTAL_PROCESSED:
-            break
-
-        print(f"Processing: {entry.title}")
-        result = summarize_and_tag(entry)
-
-        if result.get("relevant"):
-            authors = [author.name for author in entry.authors] if hasattr(entry, "authors") else []
-            rss_items.append({
-                "title": entry.title,
-                "url": entry.link,
-                "summary": result["summary"],
-                "tags": result["tags"],
-                "authors": authors,
-                "relevance": result.get("relevance", "?")
-            })
-            send_to_airtable(
-                title=entry.title,
-                url=entry.link,
-                summary=result["summary"],
-                tags=result["tags"],
-                authors=", ".join(authors),
-                relevance=result.get("relevance", "?")
-            )
-            processed += 1
-        else:
-            print("Not relevant to AI security.")
-
-    if rss_items:
-        write_rss_feed(rss_items, RSS_OUTPUT_PATH)
-        print(f"\n✅ RSS feed written to: {RSS_OUTPUT_PATH}")
-    else:
-        print("\nNo relevant papers found for RSS today.")
-
+# --- RUN SCRIPT ---
 if __name__ == "__main__":
-    main()
+    print("🔍 Fetching today's OpenAlex papers...")
+    papers = fetch_openalex_today()
+
+    relevant_papers = []
+    for work in papers:
+        title = work.get("title", "")
+        abstract = work.get("abstract_inverted_index", {})
+        abstract_text = " ".join(abstract.keys()) if isinstance(abstract, dict) else ""
+        authors = [a['author']['display_name'] for a in work.get("authorships", [])]
+        url = work.get("primary_location", {}).get("landing_page_url", work.get("id"))
+        date = work.get("publication_date", datetime.utcnow().isoformat())
+
+        result = summarize_and_tag(title, abstract_text, url)
+        if result.get("relevant"):
+            print(f"✅ Relevant: {title}")
+            paper_entry = {
+                "title": title,
+                "summary": result['summary'],
+                "tags": result['tags'],
+                "url": url,
+                "date": date,
+                "authors": authors,
+                "relevance": result['relevance']
+            }
+            relevant_papers.append(paper_entry)
+            send_to_airtable(paper_entry)
+        else:
+            print(f"🚫 Not relevant: {title}")
+        time.sleep(1)
+
+    if relevant_papers:
+        generate_rss(relevant_papers)
+    else:
+        print("ℹ️ No relevant papers found today.")
