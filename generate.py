@@ -3,9 +3,10 @@ import time
 import json
 import requests
 import openai
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from feedgen.feed import FeedGenerator
 from dotenv import load_dotenv
+from dateutil import parser
 
 load_dotenv()
 
@@ -69,9 +70,11 @@ def fetch_openalex_today():
         print("❌ OpenAlex request failed:", res.text)
         return []
 
-# --- Check for existing papers in Airtable by URL ---
-def paper_exists_by_url(url):
-    filter_formula = f"SEARCH('{url}', {{URL}})"
+# --- Check for existing papers in Airtable by unique OpenAlex ID ---
+def paper_exists_by_id(url):
+    # Extract ID from URL if possible (e.g., arXiv or OpenAlex ID)
+    unique_id = url.split("/")[-1].strip()
+    filter_formula = f"SEARCH('{unique_id}', {{URL}})"
     airtable_url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
     params = {"filterByFormula": filter_formula}
     res = requests.get(airtable_url, headers=HEADERS, params=params)
@@ -82,7 +85,7 @@ def paper_exists_by_url(url):
 
 # --- Send Paper to Airtable ---
 def send_to_airtable(entry):
-    if paper_exists_by_url(entry['url']):
+    if paper_exists_by_id(entry['url']):
         print(f"⚠️ Already exists in Airtable, skipping: {entry['title']}")
         return
     data = {
@@ -120,7 +123,8 @@ def generate_rss(papers):
         fe.title(entry['title'])
         fe.link(href=entry['url'])
         fe.description("\n".join(entry['summary']) + f"\n\nTags: {', '.join(entry['tags'])}")
-        fe.pubDate(entry['date'])
+        pub_date = parser.isoparse(entry['date']).astimezone(timezone.utc)
+        fe.pubDate(pub_date)
 
     fg.rss_file("rss.xml")
     print("✅ RSS file generated.")
@@ -141,6 +145,9 @@ if __name__ == "__main__":
 
         result = summarize_and_tag(title, abstract_text, url)
         if result.get("relevant"):
+            if paper_exists_by_id(url):
+                print(f"⚠️ Duplicate skipped: {title}")
+                continue
             print(f"✅ Relevant: {title}")
             paper_entry = {
                 "title": title,
