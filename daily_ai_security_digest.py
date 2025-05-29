@@ -26,6 +26,8 @@ HEADERS = {
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 
 # --- GPT TAGGING FUNCTION ---
+
+
 def summarize_and_tag(title, abstract, link):
     prompt = f"""
 You are an AI assistant filtering research papers for relevance to AI security.
@@ -55,6 +57,8 @@ URL: {link}
         return {"relevant": False}
 
 # --- FETCH FROM OPENALEX ---
+
+
 def fetch_openalex_today():
     base_url = "https://api.openalex.org/works"
     since = (datetime.utcnow() - timedelta(days=1)).date().isoformat()
@@ -72,6 +76,8 @@ def fetch_openalex_today():
         return []
 
 # --- FETCH FROM ARXIV ---
+
+
 def fetch_arxiv_today():
     feed_url = "https://export.arxiv.org/rss/cs.AI"
     feed = feedparser.parse(feed_url)
@@ -84,13 +90,16 @@ def fetch_arxiv_today():
     return recent
 
 # --- Check for existing papers in Airtable ---
+
+
 def paper_exists_by_id(url):
     id_fragments = [url.split("/")[-1].strip()]
     if "arxiv.org" in url:
         if "abs" in url:
             id_fragments.append(url.split("abs/")[-1].strip())
         elif "pdf" in url:
-            id_fragments.append(url.split("pdf/")[-1].replace(".pdf", "").strip())
+            id_fragments.append(
+                url.split("pdf/")[-1].replace(".pdf", "").strip())
     airtable_url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
 
     for fragment in id_fragments:
@@ -104,6 +113,8 @@ def paper_exists_by_id(url):
     return False
 
 # --- Send Paper to Airtable ---
+
+
 def send_to_airtable(entry):
     if paper_exists_by_id(entry['url']):
         print(f"⚠️ Already exists in Airtable, skipping: {entry['title']}")
@@ -131,10 +142,13 @@ def send_to_airtable(entry):
         print(f"❌ Airtable push failed for: {entry['title']}\n{response.text}")
 
 # --- Generate RSS Feed ---
+
+
 def generate_rss(papers):
     fg = FeedGenerator()
     fg.title("AI Security Paper Digest")
-    fg.link(href="https://kentaroh-toyoda.github.io/ai-security-paper-digest-rss/rss.xml")
+    fg.link(
+        href="https://kentaroh-toyoda.github.io/ai-security-paper-digest-rss/rss.xml")
     fg.description("Daily digest of AI security research papers")
     fg.language("en")
 
@@ -142,12 +156,14 @@ def generate_rss(papers):
         fe = fg.add_entry()
         fe.title(entry['title'])
         fe.link(href=entry['url'])
-        fe.description("\n".join(entry['summary']) + f"\n\nTags: {', '.join(entry['tags'])}")
+        fe.description("\n".join(entry['summary']) +
+                       f"\n\nTags: {', '.join(entry['tags'])}")
         pub_date = parser.isoparse(entry['date']).astimezone(timezone.utc)
         fe.pubDate(pub_date)
 
     fg.rss_file("rss.xml")
     print("✅ RSS file generated.")
+
 
 # --- RUN SCRIPT ---
 if __name__ == "__main__":
@@ -157,9 +173,12 @@ if __name__ == "__main__":
     for work in oa_papers:
         title = work.get("title", "")
         abstract = work.get("abstract_inverted_index", {})
-        abstract_text = " ".join(abstract.keys()) if isinstance(abstract, dict) else ""
-        authors = [a['author']['display_name'] for a in work.get("authorships", [])]
-        url = work.get("primary_location", {}).get("landing_page_url", work.get("id"))
+        abstract_text = " ".join(abstract.keys()) if isinstance(
+            abstract, dict) else ""
+        authors = [a['author']['display_name']
+                   for a in work.get("authorships", [])]
+        url = work.get("primary_location", {}).get(
+            "landing_page_url", work.get("id"))
         date = work.get("publication_date", datetime.utcnow().isoformat())
 
         if paper_exists_by_id(url):
@@ -191,7 +210,8 @@ if __name__ == "__main__":
         abstract = entry.summary
         url = entry.link
         date = parser.parse(entry.published).isoformat()
-        authors = [a.name for a in entry.authors] if hasattr(entry, 'authors') else []
+        authors = [a.name for a in entry.authors] if hasattr(
+            entry, 'authors') else []
 
         if paper_exists_by_id(url):
             print(f"⚠️ Duplicate skipped: {title}")
