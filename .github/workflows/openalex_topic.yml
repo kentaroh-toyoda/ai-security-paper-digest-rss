@@ -1,3 +1,4 @@
+name: Fetch Papers from OpenAlex
 on:
   workflow_dispatch:
     inputs:
