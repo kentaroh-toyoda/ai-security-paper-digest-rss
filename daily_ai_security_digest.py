@@ -3,6 +3,7 @@ import time
 import json
 import requests
 import openai
+import feedparser
 from datetime import datetime, timedelta, timezone
 from feedgen.feed import FeedGenerator
 from dotenv import load_dotenv
@@ -70,17 +71,36 @@ def fetch_openalex_today():
         print("❌ OpenAlex request failed:", res.text)
         return []
 
-# --- Check for existing papers in Airtable by unique OpenAlex ID ---
+# --- FETCH FROM ARXIV ---
+def fetch_arxiv_today():
+    feed_url = "https://export.arxiv.org/rss/cs.AI"
+    feed = feedparser.parse(feed_url)
+    recent = []
+    yesterday = datetime.utcnow() - timedelta(days=1)
+    for entry in feed.entries:
+        pub = parser.parse(entry.published)
+        if pub > yesterday:
+            recent.append(entry)
+    return recent
+
+# --- Check for existing papers in Airtable ---
 def paper_exists_by_id(url):
-    # Extract ID from URL if possible (e.g., arXiv or OpenAlex ID)
-    unique_id = url.split("/")[-1].strip()
-    filter_formula = f"SEARCH('{unique_id}', {{URL}})"
+    id_fragments = [url.split("/")[-1].strip()]
+    if "arxiv.org" in url:
+        if "abs" in url:
+            id_fragments.append(url.split("abs/")[-1].strip())
+        elif "pdf" in url:
+            id_fragments.append(url.split("pdf/")[-1].replace(".pdf", "").strip())
     airtable_url = f"https://api.airtable.com/v0/{AIRTABLE_BASE_ID}/{AIRTABLE_TABLE_NAME}"
-    params = {"filterByFormula": filter_formula}
-    res = requests.get(airtable_url, headers=HEADERS, params=params)
-    if res.ok:
-        records = res.json().get("records", [])
-        return len(records) > 0
+
+    for fragment in id_fragments:
+        filter_formula = f"SEARCH('{fragment}', {{URL}})"
+        params = {"filterByFormula": filter_formula}
+        res = requests.get(airtable_url, headers=HEADERS, params=params)
+        if res.ok:
+            records = res.json().get("records", [])
+            if len(records) > 0:
+                return True
     return False
 
 # --- Send Paper to Airtable ---
@@ -97,7 +117,7 @@ def send_to_airtable(entry):
             "Authors": ", ".join(entry['authors']),
             "Relevance": entry['relevance'],
             "Date": entry['date'],
-            "Source": "OpenAlex"
+            "Source": entry['source']
         }
     }
     response = requests.post(
@@ -131,11 +151,10 @@ def generate_rss(papers):
 
 # --- RUN SCRIPT ---
 if __name__ == "__main__":
-    print("🔍 Fetching today's OpenAlex papers...")
-    papers = fetch_openalex_today()
-
-    relevant_papers = []
-    for work in papers:
+    print("🔍 Fetching today's OpenAlex and arXiv papers...")
+    all_papers = []
+    oa_papers = fetch_openalex_today()
+    for work in oa_papers:
         title = work.get("title", "")
         abstract = work.get("abstract_inverted_index", {})
         abstract_text = " ".join(abstract.keys()) if isinstance(abstract, dict) else ""
@@ -143,12 +162,13 @@ if __name__ == "__main__":
         url = work.get("primary_location", {}).get("landing_page_url", work.get("id"))
         date = work.get("publication_date", datetime.utcnow().isoformat())
 
+        if paper_exists_by_id(url):
+            print(f"⚠️ Duplicate skipped: {title}")
+            continue
+
         result = summarize_and_tag(title, abstract_text, url)
         if result.get("relevant"):
-            if paper_exists_by_id(url):
-                print(f"⚠️ Duplicate skipped: {title}")
-                continue
-            print(f"✅ Relevant: {title}")
+            print(f"✅ Relevant (OpenAlex): {title}")
             paper_entry = {
                 "title": title,
                 "summary": result['summary'],
@@ -156,15 +176,47 @@ if __name__ == "__main__":
                 "url": url,
                 "date": date,
                 "authors": authors,
-                "relevance": result['relevance']
+                "relevance": result['relevance'],
+                "source": "OpenAlex"
             }
-            relevant_papers.append(paper_entry)
+            all_papers.append(paper_entry)
             send_to_airtable(paper_entry)
         else:
             print(f"🚫 Not relevant: {title}")
         time.sleep(1)
 
-    if relevant_papers:
-        generate_rss(relevant_papers)
+    arxiv_papers = fetch_arxiv_today()
+    for entry in arxiv_papers:
+        title = entry.title
+        abstract = entry.summary
+        url = entry.link
+        date = parser.parse(entry.published).isoformat()
+        authors = [a.name for a in entry.authors] if hasattr(entry, 'authors') else []
+
+        if paper_exists_by_id(url):
+            print(f"⚠️ Duplicate skipped: {title}")
+            continue
+
+        result = summarize_and_tag(title, abstract, url)
+        if result.get("relevant"):
+            print(f"✅ Relevant (arXiv): {title}")
+            paper_entry = {
+                "title": title,
+                "summary": result['summary'],
+                "tags": result['tags'],
+                "url": url,
+                "date": date,
+                "authors": authors,
+                "relevance": result['relevance'],
+                "source": "arXiv"
+            }
+            all_papers.append(paper_entry)
+            send_to_airtable(paper_entry)
+        else:
+            print(f"🚫 Not relevant: {title}")
+        time.sleep(1)
+
+    if all_papers:
+        generate_rss(all_papers)
     else:
         print("ℹ️ No relevant papers found today.")

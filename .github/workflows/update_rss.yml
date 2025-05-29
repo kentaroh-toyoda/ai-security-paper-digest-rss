@@ -1,4 +1,4 @@
-name: Update RSS Feed
+name: Fetch Latest Papers and Update RSS Feed
 
 on:
   schedule:
@@ -29,7 +29,7 @@ jobs:
           AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
           AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
           AIRTABLE_TABLE_NAME: ${{ secrets.AIRTABLE_TABLE_NAME }}
-        run: python generate.py
+        run: python daily_ai_security_digest.py
 
       - name: Commit and push RSS file
         run: |
