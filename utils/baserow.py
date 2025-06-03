@@ -139,7 +139,8 @@ def insert_to_baserow(row_data: Dict[str, Any], token: str, table_id: str) -> bo
             headers=headers
         )
 
-        if response.status_code == 201:
+        # Consider both 200 and 201 as success
+        if response.status_code in [200, 201]:
             print(f"✅ Added to Baserow: {row_data['Title']}")
             return True
         else:
