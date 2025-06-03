@@ -1,4 +1,4 @@
-name: Fetch Latest Papers and Update RSS Feed
+name: Update RSS Feed
 
 on:
   schedule:
