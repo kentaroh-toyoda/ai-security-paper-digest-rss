@@ -5,6 +5,7 @@ import json
 import openai
 from openai import OpenAI
 from dotenv import load_dotenv
+from typing import Tuple, Dict, Any
 
 # Load environment variables
 load_dotenv()
@@ -22,65 +23,62 @@ def get_gpt_config():
     }
 
 
-def assess_relevance_and_tags(text, api_key, return_usage=False):
+def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "gpt-4.1") -> Tuple[Dict[str, Any], int]:
+    """Assess if a paper is relevant and extract tags using GPT."""
     client = OpenAI(api_key=api_key)
-    config = get_gpt_config()
 
-    system_prompt = (
-        "You are an AI assistant that filters research papers. "
-        "Given the title, abstract, and URL of a paper, determine whether it's relevant to AI safety, security, "
-        "or responsible AI development, including topics like LLM red teaming, adversarial attacks, "
-        "data poisoning, robustness, or any other aspects of making AI systems more reliable and safe. "
-        "If relevant, provide a summary and generate appropriate tags (e.g., 'red teaming', 'robustness', 'LLM')."
-    )
-    user_prompt = f"""Here is a research paper.
+    system_prompt = """You are an expert in AI security and safety. Your task is to assess if a paper is relevant to AI security, safety, or red teaming, and extract relevant tags.
 
-{text}
+Relevance criteria:
+- Papers about AI security, safety, or red teaming
+- Papers about adversarial attacks on AI systems
+- Papers about jailbreaking or prompt injection
+- Papers about AI alignment or robustness
+- Papers about privacy or security in AI systems
+- Papers about AI governance or policy
+- Papers about AI ethics or responsible AI
+- Papers about AI risk assessment or threat modeling
 
-Please output JSON with the following format:
+If the paper is relevant:
+1. Provide a brief summary (2-4 bullet points)
+2. Extract 3-5 relevant tags
+3. Rate relevance from 1-5 (5 being most relevant)
+4. Provide a brief reason for the relevance rating
 
-{{
-  "relevant": true or false,
-  "summary": [bullet points about the key ideas],
-  "tags": [short tags for topic classification],
-  "relevance_score": integer from 1 (not very relevant) to 5 (very relevant),
-  "reason": "brief explanation of why this paper is considered relevant or not"
-}}"""
+If the paper is not relevant, simply respond with {"relevant": false}.
 
-    response = client.chat.completions.create(
-        model=config["model"],
-        temperature=config["temperature"],
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-    )
-    content = response.choices[0].message.content
-
-    # Print the raw response for debugging
-    print(f"\nGPT Response for {text.split('Title: ')[1].split('\n')[0]}:")
-    print(content)
+Respond in JSON format:
+{
+    "relevant": true/false,
+    "summary": ["point 1", "point 2", ...],
+    "tags": ["tag1", "tag2", ...],
+    "relevance_score": 1-5,
+    "reason": "brief explanation"
+}"""
 
     try:
-        # Try to parse as JSON first
-        parsed = json.loads(content)
-    except json.JSONDecodeError:
-        try:
-            # Fallback to eval if JSON parsing fails
-            parsed = eval(content)
-        except Exception as e:
-            print(f"❌ Error parsing GPT output: {e}")
-            parsed = {
-                "relevant": False,
-                "summary": ["❌ Failed to parse GPT output."],
-                "tags": ["error"],
-                "relevance_score": 1,
-                "reason": f"Error parsing response: {str(e)}"
-            }
+        response = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": text}
+            ],
+            temperature=temperature
+        )
+        result = response.choices[0].message.content
+        token_count = response.usage.total_tokens
 
-    if return_usage:
-        return parsed, response.usage
-    return parsed
+        # Parse the response as JSON
+        try:
+            result_dict = json.loads(result)
+            return result_dict, token_count
+        except json.JSONDecodeError:
+            print(f"❌ Failed to parse GPT response as JSON: {result}")
+            return {"relevant": False}, token_count
+
+    except Exception as e:
+        print(f"❌ Error calling GPT API: {str(e)}")
+        return {"relevant": False}, 0
 
 
 def assess_paper_quality(title, fulltext_html, api_key, return_usage=False):
