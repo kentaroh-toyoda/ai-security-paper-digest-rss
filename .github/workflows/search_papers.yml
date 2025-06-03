@@ -15,6 +15,14 @@ on:
         description: "Max pages to fetch"
         required: false
         default: "100"
+      gpt_model:
+        description: "GPT model to use"
+        required: false
+        default: "gpt-4.1"
+      gpt_temperature:
+        description: "GPT temperature (0.0 to 1.0)"
+        required: false
+        default: "0.1"
 
 jobs:
   run:
@@ -24,6 +32,8 @@ jobs:
       OPENALEX_EMAIL: ${{ secrets.OPENALEX_EMAIL }}
       BASEROW_API_TOKEN: ${{ secrets.BASEROW_API_TOKEN }}
       BASEROW_TABLE_ID: ${{ secrets.BASEROW_TABLE_ID }}
+      GPT_MODEL: ${{ github.event.inputs.gpt_model }}
+      GPT_TEMPERATURE: ${{ github.event.inputs.gpt_temperature }}
 
     steps:
       - name: Checkout repo
