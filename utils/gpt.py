@@ -1,6 +1,7 @@
 # utils/gpt.py
 
 import os
+import json
 import openai
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -27,8 +28,9 @@ def assess_relevance_and_tags(text, api_key, return_usage=False):
 
     system_prompt = (
         "You are an AI assistant that filters research papers. "
-        "Given the title, abstract, and URL of a paper, determine whether it's relevant to AI security, "
-        "such as LLM red teaming, adversarial attacks, data poisoning, or robustness. "
+        "Given the title, abstract, and URL of a paper, determine whether it's relevant to AI safety, security, "
+        "or responsible AI development, including topics like LLM red teaming, adversarial attacks, "
+        "data poisoning, robustness, or any other aspects of making AI systems more reliable and safe. "
         "If relevant, provide a summary and generate appropriate tags (e.g., 'red teaming', 'robustness', 'LLM')."
     )
     user_prompt = f"""Here is a research paper.
@@ -41,7 +43,8 @@ Please output JSON with the following format:
   "relevant": true or false,
   "summary": [bullet points about the key ideas],
   "tags": [short tags for topic classification],
-  "relevance_score": integer from 1 (not very relevant) to 5 (very relevant)
+  "relevance_score": integer from 1 (not very relevant) to 5 (very relevant),
+  "reason": "brief explanation of why this paper is considered relevant or not"
 }}"""
 
     response = client.chat.completions.create(
@@ -53,15 +56,28 @@ Please output JSON with the following format:
         ]
     )
     content = response.choices[0].message.content
+
+    # Print the raw response for debugging
+    print(f"\nGPT Response for {text.split('Title: ')[1].split('\n')[0]}:")
+    print(content)
+
     try:
-        parsed = eval(content)
-    except Exception:
-        parsed = {
-            "relevant": False,
-            "summary": ["❌ Failed to parse GPT output."],
-            "tags": ["error"],
-            "relevance_score": 1
-        }
+        # Try to parse as JSON first
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        try:
+            # Fallback to eval if JSON parsing fails
+            parsed = eval(content)
+        except Exception as e:
+            print(f"❌ Error parsing GPT output: {e}")
+            parsed = {
+                "relevant": False,
+                "summary": ["❌ Failed to parse GPT output."],
+                "tags": ["error"],
+                "relevance_score": 1,
+                "reason": f"Error parsing response: {str(e)}"
+            }
+
     if return_usage:
         return parsed, response.usage
     return parsed
@@ -103,17 +119,29 @@ HTML Full Paper:
         ]
     )
     content = response.choices[0].message.content
+
+    # Print the raw response for debugging
+    print(f"\nGPT Quality Assessment for {title}:")
+    print(content)
+
     try:
-        parsed = eval(content)
-    except Exception:
-        parsed = {
-            "Clarity": 1,
-            "Novelty": 1,
-            "Significance": 1,
-            "Try-worthiness": False,
-            "Justification": "❌ Failed to parse GPT output.",
-            "Code repository": ""
-        }
+        # Try to parse as JSON first
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
+        try:
+            # Fallback to eval if JSON parsing fails
+            parsed = eval(content)
+        except Exception as e:
+            print(f"❌ Error parsing GPT output: {e}")
+            parsed = {
+                "Clarity": 1,
+                "Novelty": 1,
+                "Significance": 1,
+                "Try-worthiness": False,
+                "Justification": f"Error parsing response: {str(e)}",
+                "Code repository": ""
+            }
+
     if return_usage:
         return parsed, response.usage
     return parsed
