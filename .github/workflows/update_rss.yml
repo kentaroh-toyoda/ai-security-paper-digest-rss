@@ -1,24 +1,26 @@
-name: Update RSS Feed
+name: Daily RSS Feed Update
 
 on:
   schedule:
-    - cron: '0 22 * * *'  # 6 AM SGT (22:00 UTC)
+    - cron: '0 22 * * *'  # Runs at 6AM SGT (22:00 UTC)
   workflow_dispatch:
 
 jobs:
-  build:
+  run-daily-digest:
     runs-on: ubuntu-latest
     env:
+      GH_PAT: ${{ secrets.GH_PAT }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-      AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+      AIRTABLE_API_KEY: ${{ secrets.AIRTABLE_API_KEY }}
       AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
       AIRTABLE_TABLE_NAME: ${{ secrets.AIRTABLE_TABLE_NAME }}
       OPENALEX_EMAIL: ${{ secrets.OPENALEX_EMAIL }}
-      GH_PAT: ${{ secrets.GH_PAT }}
 
     steps:
-      - name: Checkout repo
+      - name: Checkout repo without default credentials
         uses: actions/checkout@v3
+        with:
+          persist-credentials: false
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -30,15 +32,14 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run daily digest
+      - name: Run daily digest script
         run: python daily_ai_security_digest.py
 
-      - name: Commit and push RSS file
+      - name: Git commit and push RSS file
         run: |
           git config --global user.name "AI Security Paper Digest Bot"
           git config --global user.email "bot@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${GH_PAT}@github.com/${{ github.repository }}
           git add rss.xml
           git commit -m "Auto-update RSS feed" || echo "No changes to commit"
-          git pull --rebase
-          git push || (echo 'Retrying in 10s...' && sleep 10 && git push)
+          git push origin HEAD:main || (echo 'Retrying in 10s...' && sleep 10 && git push origin HEAD:main)
