@@ -66,16 +66,19 @@ def prepare_row_data(row_data: Dict[str, Any]) -> Dict[str, Any]:
     """Prepare row data for Baserow by ensuring correct types and handling null values."""
     prepared_data = {}
 
-    # Handle numeric fields
-    numeric_fields = ["Clarity", "Novelty", "Significance", "Relevance"]
-    for field in numeric_fields:
+    # Handle rating fields (1-5 scale)
+    rating_fields = ["Clarity", "Novelty", "Significance", "Relevance"]
+    for field in rating_fields:
         if field in row_data:
             value = row_data[field]
             if value is None or value == 0:
                 prepared_data[field] = None
             else:
-                prepared_data[field] = int(value) if isinstance(
-                    value, (int, float)) else None
+                # Ensure value is between 1 and 5
+                value = int(value) if isinstance(value, (int, float)) else None
+                if value is not None:
+                    value = max(1, min(5, value))
+                prepared_data[field] = value
 
     # Handle boolean fields
     boolean_fields = ["Try-worthiness"]
@@ -84,10 +87,21 @@ def prepare_row_data(row_data: Dict[str, Any]) -> Dict[str, Any]:
             value = row_data[field]
             prepared_data[field] = bool(value) if value is not None else None
 
-    # Handle string fields
-    string_fields = ["Title", "URL", "Summary", "Tags",
-                     "Authors", "Date", "Justification", "Code repository"]
-    for field in string_fields:
+    # Handle URL fields
+    url_fields = ["URL", "Code repository"]
+    for field in url_fields:
+        if field in row_data:
+            value = row_data[field]
+            prepared_data[field] = str(value) if value is not None else None
+
+    # Handle date field
+    if "Date" in row_data:
+        value = row_data["Date"]
+        prepared_data["Date"] = str(value) if value is not None else None
+
+    # Handle text fields
+    text_fields = ["Title", "Summary", "Tags", "Authors", "Justification"]
+    for field in text_fields:
         if field in row_data:
             value = row_data[field]
             prepared_data[field] = str(value) if value is not None else None
