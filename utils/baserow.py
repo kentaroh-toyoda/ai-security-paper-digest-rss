@@ -40,7 +40,6 @@ def validate_row_data(row_data: Dict[str, Any]) -> List[str]:
         "URL": 255,
         "Summary": 10000,
         "Tags": 255,
-        "Authors": 255,
         "Date": 10,
         "Clarity": 1,
         "Novelty": 1,
@@ -201,6 +200,8 @@ def create_field(field_name: str, headers: Dict[str, str], table_id: str) -> Non
         field_type = "boolean"
     elif field_name == "Date":
         field_type = "date"
+    elif field_name in ["Title", "URL", "Tags", "Code repository"]:
+        field_type = "text"
 
     payload = {
         "table_id": table_id,
