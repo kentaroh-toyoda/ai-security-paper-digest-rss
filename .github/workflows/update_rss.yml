@@ -2,40 +2,43 @@ name: Fetch Latest Papers and Update RSS Feed
 
 on:
   schedule:
-    - cron: "0 22 * * *" # 6AM Singapore Time
+    - cron: '0 22 * * *'  # 6 AM SGT (22:00 UTC)
   workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
+      AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
+      AIRTABLE_TABLE_NAME: ${{ secrets.AIRTABLE_TABLE_NAME }}
+      OPENALEX_EMAIL: ${{ secrets.OPENALEX_EMAIL }}
+      GH_PAT: ${{ secrets.GH_PAT }}
 
     steps:
-      - name: Checkout repo with PAT
+      - name: Checkout repo
         uses: actions/checkout@v3
-        with:
-          token: ${{ secrets.GH_PAT }}
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: '3.12'
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
-      - name: Run script
-        env:
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          AIRTABLE_TOKEN: ${{ secrets.AIRTABLE_TOKEN }}
-          AIRTABLE_BASE_ID: ${{ secrets.AIRTABLE_BASE_ID }}
-          AIRTABLE_TABLE_NAME: ${{ secrets.AIRTABLE_TABLE_NAME }}
+      - name: Run daily digest
         run: python daily_ai_security_digest.py
 
       - name: Commit and push RSS file
         run: |
           git config --global user.name "AI Security Paper Digest Bot"
           git config --global user.email "bot@users.noreply.github.com"
+          git remote set-url origin https://x-access-token:${GH_PAT}@github.com/${{ github.repository }}
           git add rss.xml
-          git commit -m "Auto-update RSS feed at $(date -u)" || echo "No changes to commit"
+          git commit -m "Auto-update RSS feed" || echo "No changes to commit"
           git pull --rebase
-          git push
+          git push || (echo 'Retrying in 10s...' && sleep 10 && git push)
