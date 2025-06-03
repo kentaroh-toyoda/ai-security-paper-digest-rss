@@ -62,6 +62,39 @@ def validate_row_data(row_data: Dict[str, Any]) -> List[str]:
     return errors
 
 
+def prepare_row_data(row_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Prepare row data for Baserow by ensuring correct types and handling null values."""
+    prepared_data = {}
+
+    # Handle numeric fields
+    numeric_fields = ["Clarity", "Novelty", "Significance", "Relevance"]
+    for field in numeric_fields:
+        if field in row_data:
+            value = row_data[field]
+            if value is None or value == 0:
+                prepared_data[field] = None
+            else:
+                prepared_data[field] = int(value) if isinstance(
+                    value, (int, float)) else None
+
+    # Handle boolean fields
+    boolean_fields = ["Try-worthiness"]
+    for field in boolean_fields:
+        if field in row_data:
+            value = row_data[field]
+            prepared_data[field] = bool(value) if value is not None else None
+
+    # Handle string fields
+    string_fields = ["Title", "URL", "Summary", "Tags",
+                     "Authors", "Date", "Justification", "Code repository"]
+    for field in string_fields:
+        if field in row_data:
+            value = row_data[field]
+            prepared_data[field] = str(value) if value is not None else None
+
+    return prepared_data
+
+
 def insert_to_baserow(row_data: Dict[str, Any], token: str, table_id: str) -> bool:
     """Insert a row into Baserow with validation and error handling."""
     # Validate data first
@@ -73,6 +106,13 @@ def insert_to_baserow(row_data: Dict[str, Any], token: str, table_id: str) -> bo
             print(f"  - {error}")
         return False
 
+    # Prepare data for Baserow
+    prepared_data = prepare_row_data(row_data)
+
+    # Debug print the prepared data
+    print("\nPrepared data for Baserow:")
+    print(json.dumps(prepared_data, indent=2))
+
     headers = {
         "Authorization": f"Token {token}",
         "Content-Type": "application/json"
@@ -81,7 +121,7 @@ def insert_to_baserow(row_data: Dict[str, Any], token: str, table_id: str) -> bo
     try:
         response = requests.post(
             f"{BASEROW_API_URL}/rows/table/{table_id}/?user_field_names=true",
-            json=row_data,
+            json=prepared_data,
             headers=headers
         )
 
@@ -94,6 +134,15 @@ def insert_to_baserow(row_data: Dict[str, Any], token: str, table_id: str) -> bo
             print("Response headers:", json.dumps(
                 dict(response.headers), indent=2))
             print("Response body:", response.text)
+
+            # Try to parse the response as JSON for better error display
+            try:
+                error_json = response.json()
+                print("\nDetailed error information:")
+                print(json.dumps(error_json, indent=2))
+            except:
+                pass
+
             return False
 
     except Exception as e:
@@ -131,7 +180,7 @@ def create_field(field_name: str, headers: Dict[str, str], table_id: str) -> Non
 
     # Determine field type based on name
     field_type = "long_text"
-    if field_name in ["Clarity", "Novelty", "Significance"]:
+    if field_name in ["Clarity", "Novelty", "Significance", "Relevance"]:
         field_type = "number"
     elif field_name == "Try-worthiness":
         field_type = "boolean"
