@@ -34,6 +34,13 @@ ensure_baserow_fields_exist(
     ["Clarity", "Novelty", "Significance", "Try-worthiness", "Justification", "Code repository"]
 )
 
+def reconstruct_abstract(inverted_index):
+    position_word = {}
+    for word, positions in inverted_index.items():
+        for pos in positions:
+            position_word[pos] = word
+    return " ".join(word for pos, word in sorted(position_word.items()))
+
 # Time formatting
 print(f"🔎 Searching OpenAlex for '{SEARCH_QUERY}' papers since {CUTOFF_DATE}...")
 
@@ -60,7 +67,7 @@ while cursor:
         if not url or not title:
             continue
 
-        abstract_text = " ".join([word for word_list in abstract.values() for word in word_list]) if abstract else ""
+        abstract_text = reconstruct_abstract(abstract) if abstract else ""
         full_text = f"Title: {title}\nAbstract: {abstract_text}\nURL: {url}"
 
         result = assess_relevance_and_tags(full_text, OPENAI_API_KEY)
