@@ -1,4 +1,4 @@
-name: Test GitHub PAT Push
+name: Test GitHub PAT Push (Fixed)
 
 on:
   workflow_dispatch:
@@ -10,13 +10,15 @@ jobs:
       GH_PAT: ${{ secrets.GH_PAT }}
 
     steps:
-      - name: Checkout repository
+      - name: Checkout repository (disable default credentials)
         uses: actions/checkout@v3
+        with:
+          persist-credentials: false
 
       - name: Create test file
         run: echo "<test>Git auth check</test>" > auth_test.xml
 
-      - name: Git setup and commit
+      - name: Configure Git and commit
         run: |
           git config --global user.name "GitHub Actions Bot"
           git config --global user.email "bot@users.noreply.github.com"
@@ -24,10 +26,9 @@ jobs:
           git add auth_test.xml
           git commit -m "Test auth with PAT" || echo "Nothing to commit"
 
-      - name: Confirm auth setup (safe)
+      - name: Show Git remotes
         run: git remote -v
 
       - name: Push test file
         run: |
-          git pull --rebase
-          git push || (echo 'Retrying in 10s...' && sleep 10 && git push)
+          git push origin HEAD:main || (echo 'Retrying in 10s...' && sleep 10 && git push origin HEAD:main)
