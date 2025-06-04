@@ -7,7 +7,7 @@ import requests
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from feedgen.feed import FeedGenerator
-from utils.gpt import assess_relevance_and_tags
+from utils.gpt import assess_relevance_and_tags, assess_paper_quality
 from utils.baserow import insert_to_baserow, paper_exists_in_baserow
 
 load_dotenv()
@@ -31,11 +31,13 @@ ARXIV_FEEDS = [
 # Token usage tracking
 total_tokens = 0
 
+
 def fetch_openalex_24h():
     since = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
     url = f"{OPENALEX_URL}?filter=from_publication_date:{since}&per-page=100&mailto={OPENALEX_EMAIL}"
     resp = requests.get(url)
     return resp.json().get("results", [])
+
 
 def fetch_arxiv():
     entries = []
@@ -43,6 +45,7 @@ def fetch_arxiv():
         parsed = feedparser.parse(feed_url)
         entries.extend(parsed.entries)
     return entries
+
 
 def build_rss_feed(relevant_papers):
     fg = FeedGenerator()
@@ -54,12 +57,60 @@ def build_rss_feed(relevant_papers):
         fe = fg.add_entry()
         fe.title(paper["Title"])
         fe.link(href=paper["URL"])
-        fe.description("\n".join(paper["Summary"]))
+
+        # Build a more readable description
+        description = []
+
+        # Summary
+        if "Summary" in paper:
+            description.append("<h3>Summary</h3>")
+            description.append("<ul>")
+            for point in paper["Summary"]:
+                description.append(f"<li>{point}</li>")
+            description.append("</ul>")
+
+        # Quality Assessment
+        if any(key in paper for key in ["Clarity", "Novelty", "Significance", "Try-worthiness"]):
+            description.append("<h3>Quality Assessment</h3>")
+            description.append("<ul>")
+            if "Clarity" in paper:
+                description.append(f"<li>Clarity: {paper['Clarity']}/5</li>")
+            if "Novelty" in paper:
+                description.append(f"<li>Novelty: {paper['Novelty']}/5</li>")
+            if "Significance" in paper:
+                description.append(
+                    f"<li>Significance: {paper['Significance']}/5</li>")
+            if "Try-worthiness" in paper:
+                description.append(
+                    f"<li>Try-worthiness: {'Yes' if paper['Try-worthiness'] else 'No'}</li>")
+            if "Justification" in paper:
+                description.append(
+                    f"<li>Justification: {paper['Justification']}</li>")
+            description.append("</ul>")
+
+        # Additional Information
+        description.append("<h3>Additional Information</h3>")
+        description.append("<ul>")
+        if "Authors" in paper:
+            description.append(f"<li>Authors: {paper['Authors']}</li>")
+        if "Tags" in paper:
+            description.append(f"<li>Tags: {paper['Tags']}</li>")
+        if "Relevance" in paper:
+            description.append(
+                f"<li>Relevance Score: {paper['Relevance']}/5</li>")
+        if "Code repository" in paper and paper["Code repository"]:
+            description.append(
+                f"<li>Code Repository: <a href='{paper['Code repository']}'>{paper['Code repository']}</a></li>")
+        description.append("</ul>")
+
+        fe.description("".join(description))
         fe.author({"name": paper["Authors"]})
-        fe.pubDate(datetime.fromisoformat(paper["Date"]).astimezone(timezone.utc))
+        fe.pubDate(datetime.fromisoformat(
+            paper["Date"]).astimezone(timezone.utc))
         fe.guid(paper["URL"])
 
     fg.rss_file("rss.xml")
+
 
 def process_papers(raw_papers, source):
     global total_tokens
@@ -71,9 +122,11 @@ def process_papers(raw_papers, source):
             title = paper.get("title", "")
             url = paper.get("id", "")
             abstract = paper.get("abstract", "") or ""
-            authors = ", ".join([a.get("author", {}).get("display_name", "") for a in paper.get("authorships", [])])
-            date = paper.get("publication_date", datetime.now(timezone.utc).date().isoformat())
-        else:
+            authors = ", ".join([a.get("author", {}).get(
+                "display_name", "") for a in paper.get("authorships", [])])
+            date = paper.get("publication_date", datetime.now(
+                timezone.utc).date().isoformat())
+        else:  # arxiv
             title = paper.title
             url = paper.link
             abstract = paper.summary if hasattr(paper, 'summary') else ""
@@ -88,7 +141,8 @@ def process_papers(raw_papers, source):
             continue
 
         fulltext = f"Title: {title}\nAbstract: {abstract}\nURL: {url}"
-        result, token_count = assess_relevance_and_tags(fulltext, OPENAI_API_KEY, temperature=0.1, model="gpt-4.1")
+        result, token_count = assess_relevance_and_tags(
+            fulltext, OPENAI_API_KEY, temperature=0.1, model="gpt-4.1")
         total_tokens += token_count
 
         if not result["relevant"]:
@@ -103,8 +157,24 @@ def process_papers(raw_papers, source):
             "Tags": ", ".join(result["tags"]),
             "Authors": authors,
             "Date": date,
-            "Relevance Score": result["relevance_score"]
+            "Relevance": result["relevance_score"]
         }
+
+        # For arXiv papers, fetch full text and assess quality
+        if "arxiv.org" in url:
+            try:
+                arxiv_id = url.split("/")[-1]
+                html_url = f"https://arxiv.org/html/{arxiv_id}"
+                html_response = requests.get(html_url)
+                if html_response.status_code == 200:
+                    print(f"📄 Assessing quality for: {title}")
+                    quality = assess_paper_quality(
+                        title, html_response.text, OPENAI_API_KEY)
+                    row.update(quality)
+                else:
+                    print(f"⚠️ Failed to retrieve HTML for: {title}")
+            except Exception as e:
+                print(f"❌ Error fetching full text: {e}")
 
         insert_to_baserow(row, BASEROW_API_TOKEN, BASEROW_TABLE_ID)
         relevant.append(row)
@@ -112,9 +182,11 @@ def process_papers(raw_papers, source):
 
     return relevant
 
+
 def estimate_cost(tokens):
     cost_per_token = 0.01 / 1000  # GPT-4.1 input pricing ($0.01/1K tokens)
     return round(tokens * cost_per_token, 4)
+
 
 def main():
     print("🔄 Fetching OpenAlex papers (past 24h)...")
@@ -135,7 +207,9 @@ def main():
     build_rss_feed(all_results)
 
     cost = estimate_cost(total_tokens)
-    print(f"✅ Done. Total tokens used: {total_tokens}, Estimated cost: ${cost:.4f}")
+    print(
+        f"✅ Done. Total tokens used: {total_tokens}, Estimated cost: ${cost:.4f}")
+
 
 if __name__ == "__main__":
     main()
