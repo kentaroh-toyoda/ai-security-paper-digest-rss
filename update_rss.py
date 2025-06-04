@@ -41,9 +41,20 @@ def fetch_openalex_24h():
 
 def fetch_arxiv():
     entries = []
+    cutoff_time = datetime.now(timezone.utc) - timedelta(days=1)
+
     for feed_url in ARXIV_FEEDS:
         parsed = feedparser.parse(feed_url)
-        entries.extend(parsed.entries)
+        for entry in parsed.entries:
+            # Parse the published date
+            published = datetime(
+                *entry.published_parsed[:6], tzinfo=timezone.utc)
+            if published >= cutoff_time:
+                entries.append(entry)
+            else:
+                # Since entries are sorted by date, we can stop once we find an older entry
+                break
+
     return entries
 
 
