@@ -29,21 +29,50 @@ def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1,
 
     system_prompt = """You are an expert in AI security and safety. Your task is to assess if a paper is relevant to AI security, safety, or red teaming, and extract relevant tags.
 
-Relevance criteria:
-- Papers about AI security, safety, or red teaming
-- Papers about adversarial attacks on AI systems
-- Papers about jailbreaking or prompt injection
-- Papers about AI alignment or robustness
-- Papers about privacy or security in AI systems
-- Papers about AI governance or policy
-- Papers about AI ethics or responsible AI
-- Papers about AI risk assessment or threat modeling
+IMPORTANT: Be strict in your assessment. Only mark papers as relevant if they DIRECTLY address AI security, safety, or red teaming topics.
+
+Relevance criteria (paper MUST focus on one or more of these):
+1. AI Security & Red Teaming:
+   - LLM red teaming and jailbreaking
+   - Prompt injection and adversarial prompting
+   - Model extraction and stealing
+   - Data poisoning and backdoor attacks
+   - Privacy attacks (membership inference, model inversion)
+   - Security vulnerabilities in AI systems
+
+2. AI Safety & Alignment:
+   - Robustness against adversarial examples
+   - Alignment with human values
+   - Preventing harmful outputs
+   - Safety evaluation and testing
+   - Risk assessment and mitigation
+
+3. AI Governance & Policy:
+   - Security standards and best practices
+   - Regulatory compliance
+   - Security audits and certifications
+   - Incident response and monitoring
+
+NOT RELEVANT (examples):
+- General AI/ML papers without security focus
+- Papers about AI applications without security implications
+- Papers about AI ethics without security aspects
+- Papers about AI performance or efficiency without security context
+- Papers about AI explainability without security focus
+
+Paper Types to Identify (choose ONE that best fits):
+- Research Paper: Original research with novel contributions
+- Survey/Review: Comprehensive overview of existing work
+- Benchmarking: Evaluation and comparison of methods/systems
+- Position Paper: Opinion or perspective on a topic
+- Other: Any other type not covered above
 
 If the paper is relevant:
 1. Provide a brief summary (2-4 bullet points)
 2. Extract 3-5 relevant tags
 3. Rate relevance from 1-5 (5 being most relevant)
 4. Provide a brief reason for the relevance rating
+5. Identify the paper type (choose ONE that best fits)
 
 If the paper is not relevant, simply respond with {"relevant": false}.
 
@@ -53,7 +82,8 @@ Respond in JSON format:
     "summary": ["point 1", "point 2", ...],
     "tags": ["tag1", "tag2", ...],
     "relevance_score": 1-5,
-    "reason": "brief explanation"
+    "reason": "brief explanation",
+    "paper_type": "type"
 }"""
 
     try:

@@ -69,6 +69,13 @@ def build_rss_feed(relevant_papers):
                 description.append(f"<li>{point}</li>")
             description.append("</ul>")
 
+        # Paper Type
+        if "Paper Type" in paper:
+            description.append("<h3>Paper Type</h3>")
+            description.append("<ul>")
+            description.append(f"<li>{paper['Paper Type']}</li>")
+            description.append("</ul>")
+
         # Quality Assessment
         if any(key in paper for key in ["Clarity", "Novelty", "Significance", "Try-worthiness"]):
             description.append("<h3>Quality Assessment</h3>")
@@ -157,7 +164,8 @@ def process_papers(raw_papers, source):
             "Tags": ", ".join(result["tags"]),
             "Authors": authors,
             "Date": date,
-            "Relevance": result["relevance_score"]
+            "Relevance": result["relevance_score"],
+            "Paper Type": result.get("paper_type", "Other")
         }
 
         # For arXiv papers, fetch full text and assess quality
