@@ -6,6 +6,7 @@ import openai
 from openai import OpenAI
 from dotenv import load_dotenv
 from typing import Tuple, Dict, Any
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
@@ -21,6 +22,53 @@ def get_gpt_config():
         "model": os.getenv("GPT_MODEL", DEFAULT_MODEL),
         "temperature": float(os.getenv("GPT_TEMPERATURE", DEFAULT_TEMPERATURE))
     }
+
+
+def generate_search_keywords(topic: str, api_key: str) -> str:
+    """Generate optimized search keywords using GPT.
+
+    Args:
+        topic: The topic to generate search keywords for
+        api_key: OpenAI API key
+
+    Returns:
+        str: Optimized search query string
+    """
+    client = OpenAI(api_key=api_key)
+
+    system_prompt = """You are an expert in academic paper search. Your task is to generate optimized search keywords for finding relevant papers in OpenAlex.
+
+Consider:
+1. Technical terms and jargon in the field
+2. Alternative phrasings and synonyms
+3. Related concepts and methodologies
+4. Common abbreviations and acronyms
+
+Generate a search query that:
+- Uses OR operators to combine related terms
+- Uses AND operators to ensure relevance
+- Includes quotation marks for exact phrases
+- Excludes irrelevant terms with NOT
+- Is optimized for academic paper search
+
+Example input: "LLM red teaming"
+Example output: "large language model" AND ("red teaming" OR "jailbreaking" OR "adversarial prompting") AND (security OR safety) NOT (medical OR healthcare)
+
+Respond with ONLY the search query, no explanations."""
+
+    try:
+        response = client.chat.completions.create(
+            model=DEFAULT_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": topic}
+            ],
+            temperature=DEFAULT_TEMPERATURE
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"❌ Error generating search keywords: {str(e)}")
+        return topic
 
 
 def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "gpt-4.1") -> Tuple[Dict[str, Any], int]:
@@ -111,57 +159,126 @@ Respond in JSON format:
         return {"relevant": False}, 0
 
 
-def assess_paper_quality(title, fulltext_html, api_key, return_usage=False):
+def assess_paper_quality(metadata: dict, api_key: str, return_usage=False):
+    """Assess paper quality using available metadata.
+
+    Args:
+        metadata: Dictionary containing paper metadata:
+            - title: Paper title
+            - abstract: Paper abstract
+            - cited_by_count: Number of citations
+            - publication_type: Type of publication
+            - source: Publication source/venue
+            - code_url: URL to code repository if available
+            - date: Publication date (YYYY-MM-DD)
+        api_key: OpenAI API key
+        return_usage: Whether to return token usage information
+
+    Returns:
+        dict: Quality assessment results
+    """
     client = OpenAI(api_key=api_key)
     config = get_gpt_config()
 
-    system_prompt = (
-        "You are an AI reviewer. Evaluate a research paper based on its clarity, novelty, and significance. "
-        "Also assess if it is worth trying in practice (try-worthiness), and extract justification and any code repository links."
-    )
-    user_prompt = f"""
-Title: {title}
+    # Calculate paper age in months
+    pub_date = datetime.strptime(metadata['date'], "%Y-%m-%d")
+    now = datetime.now()
+    age_months = (now.year - pub_date.year) * 12 + (now.month - pub_date.month)
 
-Please assess the following full paper (HTML version below) and output JSON:
+    # Adjust citation context based on age
+    citation_context = ""
+    if age_months < 3:
+        citation_context = "This is a very recent paper (less than 3 months old), so citation count is not yet meaningful."
+    elif age_months < 6:
+        citation_context = "This is a recent paper (3-6 months old), so citation count should be considered with caution."
+    elif age_months < 12:
+        citation_context = "This paper is 6-12 months old, so citation count is starting to become meaningful."
+    else:
+        citation_context = f"This paper is {age_months} months old, so citation count is a good indicator of impact."
 
-{{
-  "Clarity": score from 1 to 5,
-  "Novelty": score from 1 to 5,
-  "Significance": score from 1 to 5,
-  "Try-worthiness": true or false,
-  "Justification": "why this score was given",
-  "Code repository": "GitHub URL or similar, if found"
-}}
+    system_prompt = """You are an AI reviewer. Evaluate a research paper based on its metadata and abstract.
+Consider the following factors:
+1. Clarity: How well-written and clear is the paper based on the title and abstract?
+2. Novelty: How novel is the work based on the title, abstract, and publication venue?
+3. Significance: How significant is the work based on citations (considering paper age) and venue?
+4. Try-worthiness: Is this paper worth implementing or experimenting with?
 
-HTML Full Paper:
-==================
-{fulltext_html[:12000]}  <!-- Truncate if too long -->
-"""
+IMPORTANT: You must respond with a valid JSON object containing the following fields:
+- Clarity (integer 1-5)
+- Novelty (integer 1-5)
+- Significance (integer 1-5)
+- Try-worthiness (boolean)
+- Justification (string)
+- Code repository (string, can be empty)
 
-    response = client.chat.completions.create(
-        model=config["model"],
-        temperature=config["temperature"],
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-    )
-    content = response.choices[0].message.content
+Example response:
+{
+  "Clarity": 4,
+  "Novelty": 3,
+  "Significance": 5,
+  "Try-worthiness": true,
+  "Justification": "The paper presents a clear methodology with novel insights...",
+  "Code repository": "https://github.com/example/repo"
+}"""
 
-    # Print the raw response for debugging
-    print(f"\nGPT Quality Assessment for {title}:")
-    print(content)
+    user_prompt = f"""Paper Metadata:
+Title: {metadata['title']}
+Abstract: {metadata['abstract']}
+Publication Date: {metadata['date']}
+Citations: {metadata['cited_by_count']} ({citation_context})
+Publication Type: {metadata['publication_type']}
+Source/Venue: {metadata['source']}
+Code URL: {metadata['code_url']}
+
+Please assess the paper and provide your evaluation in the exact JSON format specified above."""
 
     try:
-        # Try to parse as JSON first
-        parsed = json.loads(content)
-    except json.JSONDecodeError:
+        response = client.chat.completions.create(
+            model=config["model"],
+            temperature=config["temperature"],
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+        )
+        content = response.choices[0].message.content
+
+        # Print the raw response for debugging
+        print(f"\nGPT Quality Assessment for {metadata['title']}:")
+        print(content)
+
+        # Parse the response as JSON
         try:
-            # Fallback to eval if JSON parsing fails
-            parsed = eval(content)
-        except Exception as e:
-            print(f"❌ Error parsing GPT output: {e}")
-            parsed = {
+            parsed = json.loads(content)
+            # Validate required fields
+            required_fields = ["Clarity", "Novelty",
+                               "Significance", "Try-worthiness", "Justification"]
+            for field in required_fields:
+                if field not in parsed:
+                    raise ValueError(f"Missing required field: {field}")
+
+            # Validate field types
+            if not isinstance(parsed["Clarity"], int) or not 1 <= parsed["Clarity"] <= 5:
+                raise ValueError("Clarity must be an integer between 1 and 5")
+            if not isinstance(parsed["Novelty"], int) or not 1 <= parsed["Novelty"] <= 5:
+                raise ValueError("Novelty must be an integer between 1 and 5")
+            if not isinstance(parsed["Significance"], int) or not 1 <= parsed["Significance"] <= 5:
+                raise ValueError(
+                    "Significance must be an integer between 1 and 5")
+            if not isinstance(parsed["Try-worthiness"], bool):
+                raise ValueError("Try-worthiness must be a boolean")
+            if not isinstance(parsed["Justification"], str):
+                raise ValueError("Justification must be a string")
+
+            # Ensure Code repository is a string
+            parsed["Code repository"] = str(parsed.get("Code repository", ""))
+
+            return parsed
+
+        except json.JSONDecodeError as e:
+            print(f"❌ Failed to parse GPT response as JSON: {e}")
+            print(f"Raw response: {content}")
+            return {
                 "Clarity": 1,
                 "Novelty": 1,
                 "Significance": 1,
@@ -169,7 +286,25 @@ HTML Full Paper:
                 "Justification": f"Error parsing response: {str(e)}",
                 "Code repository": ""
             }
+        except ValueError as e:
+            print(f"❌ Invalid response format: {e}")
+            print(f"Raw response: {content}")
+            return {
+                "Clarity": 1,
+                "Novelty": 1,
+                "Significance": 1,
+                "Try-worthiness": False,
+                "Justification": f"Error validating response: {str(e)}",
+                "Code repository": ""
+            }
 
-    if return_usage:
-        return parsed, response.usage
-    return parsed
+    except Exception as e:
+        print(f"❌ Error calling GPT API: {str(e)}")
+        return {
+            "Clarity": 1,
+            "Novelty": 1,
+            "Significance": 1,
+            "Try-worthiness": False,
+            "Justification": f"Error calling GPT API: {str(e)}",
+            "Code repository": ""
+        }

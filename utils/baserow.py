@@ -4,6 +4,7 @@ import requests
 import re
 import json
 from typing import Dict, Any, List
+from datetime import datetime
 
 BASEROW_API_URL = "https://api.baserow.io/api/database"
 
@@ -223,3 +224,91 @@ def create_field(field_name: str, headers: Dict[str, str], table_id: str) -> Non
             print("Response body:", response.text)
     except Exception as e:
         print(f"❌ Error creating field {field_name}: {str(e)}")
+
+
+def ensure_conversation_table_exists(api_token: str, database_id: str) -> str:
+    """Ensure the conversations table exists in Baserow and return its ID."""
+    headers = {
+        "Authorization": f"Token {api_token}",
+        "Content-Type": "application/json"
+    }
+
+    # First, get all tables in the database
+    url = f"https://api.baserow.io/api/database/tables/database/{database_id}/"
+    response = requests.get(url, headers=headers)
+
+    if response.status_code != 200:
+        raise Exception(f"Failed to get tables: {response.text}")
+
+    tables = response.json()
+
+    # Check if conversations table exists
+    conversations_table = next(
+        (table for table in tables if table["name"] == "Paper Conversations"), None)
+
+    if conversations_table:
+        return conversations_table["id"]
+
+    # Create conversations table if it doesn't exist
+    url = f"https://api.baserow.io/api/database/tables/database/{database_id}/"
+    data = {
+        "name": "Paper Conversations",
+        "fields": [
+            {"name": "Paper URL", "type": "text"},
+            {"name": "Question", "type": "text"},
+            {"name": "Answer", "type": "text"},
+            {"name": "Timestamp", "type": "date"}
+        ]
+    }
+
+    response = requests.post(url, headers=headers, json=data)
+
+    if response.status_code != 200:
+        raise Exception(
+            f"Failed to create conversations table: {response.text}")
+
+    return response.json()["id"]
+
+
+def store_conversation(api_token: str, table_id: str, paper_url: str, question: str, answer: str):
+    """Store a conversation in Baserow."""
+    headers = {
+        "Authorization": f"Token {api_token}",
+        "Content-Type": "application/json"
+    }
+
+    url = f"https://api.baserow.io/api/database/rows/table/{table_id}/"
+    data = {
+        "Paper URL": paper_url,
+        "Question": question,
+        "Answer": answer,
+        "Timestamp": datetime.now().strftime("%Y-%m-%d")
+    }
+
+    response = requests.post(url, headers=headers, json=data)
+
+    if response.status_code != 200:
+        print(f"Warning: Failed to store conversation: {response.text}")
+
+
+def get_conversation_history(api_token: str, table_id: str, paper_url: str) -> list:
+    """Get conversation history for a paper from Baserow."""
+    headers = {
+        "Authorization": f"Token {api_token}",
+        "Content-Type": "application/json"
+    }
+
+    # Construct filter to get conversations for this paper
+    url = f"https://api.baserow.io/api/database/rows/table/{table_id}/"
+    params = {
+        "filter__Paper_URL__equal": paper_url,
+        "order_by": "Timestamp"
+    }
+
+    response = requests.get(url, headers=headers, params=params)
+
+    if response.status_code != 200:
+        print(f"Warning: Failed to get conversation history: {response.text}")
+        return []
+
+    return response.json()["results"]
