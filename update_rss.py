@@ -210,9 +210,11 @@ def estimate_cost(tokens):
 def main():
     print("🔄 Fetching OpenAlex papers (past 24h)...")
     openalex_papers = fetch_openalex_24h()
+    print(f"📚 Found {len(openalex_papers)} papers from OpenAlex")
 
     print("🔄 Fetching ArXiv RSS feeds...")
     arxiv_papers = fetch_arxiv()
+    print(f"📚 Found {len(arxiv_papers)} papers from ArXiv")
 
     print("🧠 Filtering OpenAlex papers...")
     openalex_results = process_papers(openalex_papers, source="openalex")

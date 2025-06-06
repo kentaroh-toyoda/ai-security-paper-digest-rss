@@ -312,3 +312,45 @@ def get_conversation_history(api_token: str, table_id: str, paper_url: str) -> l
         return []
 
     return response.json()["results"]
+
+
+def get_all_papers(api_token, table_id):
+    """Get all papers from Baserow."""
+    url = f"https://api.baserow.io/api/database/rows/table/{table_id}/"
+    headers = {
+        "Authorization": f"Token {api_token}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        return response.json().get("results", [])
+    except requests.exceptions.RequestException as e:
+        print(f"Error fetching papers from Baserow: {e}")
+        return []
+
+
+def update_paper_in_baserow(paper, api_token, table_id):
+    """Update a paper in Baserow."""
+    if "id" not in paper:
+        print("Error: Paper must have an 'id' field to update")
+        return False
+
+    url = f"https://api.baserow.io/api/database/rows/table/{table_id}/{paper['id']}/"
+    headers = {
+        "Authorization": f"Token {api_token}",
+        "Content-Type": "application/json"
+    }
+
+    # Remove the id field as it's not needed in the update payload
+    update_data = paper.copy()
+    update_data.pop("id", None)
+
+    try:
+        response = requests.patch(url, headers=headers, json=update_data)
+        response.raise_for_status()
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"Error updating paper in Baserow: {e}")
+        return False

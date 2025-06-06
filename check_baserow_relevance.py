@@ -14,13 +14,25 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 BASEROW_API_TOKEN = os.getenv("BASEROW_API_TOKEN")
 BASEROW_TABLE_ID = os.getenv("BASEROW_TABLE_ID")
 
+# Map field IDs to logical names
+FIELD_TITLE = "field_4496823"
+FIELD_URL = "field_4496824"
+FIELD_ABSTRACT = "field_4496825"
+FIELD_TAGS = "field_4496826"
+FIELD_AUTHORS = "field_4496827"
+FIELD_DATE = "field_4496828"
+FIELD_RELEVANCE = "field_4496829"
+
+
+def get_field(paper, field):
+    return paper.get(field, "")
+
 
 def check_paper_relevance(paper):
     """Check if a paper is relevant to AI security."""
-    # Baserow returns data in a different format, we need to access it correctly
-    title = paper.get("Title", {}).get("value", "")
-    url = paper.get("URL", {}).get("value", "")
-    abstract = paper.get("Abstract", {}).get("value", "")
+    title = get_field(paper, FIELD_TITLE)
+    url = get_field(paper, FIELD_URL)
+    abstract = get_field(paper, FIELD_ABSTRACT)
 
     if not title or not url:
         print(f"⚠️ Skipping paper with missing title or URL")
@@ -48,11 +60,15 @@ def main():
     papers = get_all_papers(BASEROW_API_TOKEN, BASEROW_TABLE_ID)
     print(f"Found {len(papers)} papers to check")
 
+    if papers:
+        print("\n🔎 First record for debugging:")
+        print(json.dumps(papers[0], indent=2))
+
     relevant_count = 0
     irrelevant_count = 0
 
     for paper in papers:
-        title = paper.get("Title", {}).get("value", "Unknown Title")
+        title = get_field(paper, FIELD_TITLE) or "Unknown Title"
         print(f"\n🔍 Checking: {title}")
 
         is_relevant = check_paper_relevance(paper)
@@ -65,13 +81,10 @@ def main():
             irrelevant_count += 1
 
             # Update the paper in Baserow to mark it as irrelevant
-            # Baserow expects the data in a specific format
             update_data = {
-                "Relevance": {"value": 0},
-                "Tags": {"value": "irrelevant"}
+                FIELD_RELEVANCE: 0,
+                FIELD_TAGS: "irrelevant"
             }
-
-            # Keep the original paper data structure
             paper.update(update_data)
 
             if update_paper_in_baserow(paper, BASEROW_API_TOKEN, BASEROW_TABLE_ID):

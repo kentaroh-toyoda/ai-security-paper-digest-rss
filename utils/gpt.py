@@ -203,23 +203,7 @@ Consider the following factors:
 3. Significance: How significant is the work based on citations (considering paper age) and venue?
 4. Try-worthiness: Is this paper worth implementing or experimenting with?
 
-IMPORTANT: You must respond with a valid JSON object containing the following fields:
-- Clarity (integer 1-5)
-- Novelty (integer 1-5)
-- Significance (integer 1-5)
-- Try-worthiness (boolean)
-- Justification (string)
-- Code repository (string, can be empty)
-
-Example response:
-{
-  "Clarity": 4,
-  "Novelty": 3,
-  "Significance": 5,
-  "Try-worthiness": true,
-  "Justification": "The paper presents a clear methodology with novel insights...",
-  "Code repository": "https://github.com/example/repo"
-}"""
+Also identify any code repository links if available."""
 
     user_prompt = f"""Paper Metadata:
 Title: {metadata['title']}
@@ -230,81 +214,48 @@ Publication Type: {metadata['publication_type']}
 Source/Venue: {metadata['source']}
 Code URL: {metadata['code_url']}
 
-Please assess the paper and provide your evaluation in the exact JSON format specified above."""
+Please assess the paper and output JSON:
+{{
+  "Clarity": score from 1 to 5,
+  "Novelty": score from 1 to 5,
+  "Significance": score from 1 to 5,
+  "Try-worthiness": true or false,
+  "Justification": "brief explanation of the scores",
+  "Code repository": "GitHub URL or similar, if found"
+}}"""
+
+    response = client.chat.completions.create(
+        model=config["model"],
+        temperature=config["temperature"],
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+    )
+    content = response.choices[0].message.content
+
+    # Print the raw response for debugging
+    print(f"\nGPT Quality Assessment for {metadata['title']}:")
+    print(content)
 
     try:
-        response = client.chat.completions.create(
-            model=config["model"],
-            temperature=config["temperature"],
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
-        )
-        content = response.choices[0].message.content
-
-        # Print the raw response for debugging
-        print(f"\nGPT Quality Assessment for {metadata['title']}:")
-        print(content)
-
-        # Parse the response as JSON
+        # Try to parse as JSON first
+        parsed = json.loads(content)
+    except json.JSONDecodeError:
         try:
-            parsed = json.loads(content)
-            # Validate required fields
-            required_fields = ["Clarity", "Novelty",
-                               "Significance", "Try-worthiness", "Justification"]
-            for field in required_fields:
-                if field not in parsed:
-                    raise ValueError(f"Missing required field: {field}")
-
-            # Validate field types
-            if not isinstance(parsed["Clarity"], int) or not 1 <= parsed["Clarity"] <= 5:
-                raise ValueError("Clarity must be an integer between 1 and 5")
-            if not isinstance(parsed["Novelty"], int) or not 1 <= parsed["Novelty"] <= 5:
-                raise ValueError("Novelty must be an integer between 1 and 5")
-            if not isinstance(parsed["Significance"], int) or not 1 <= parsed["Significance"] <= 5:
-                raise ValueError(
-                    "Significance must be an integer between 1 and 5")
-            if not isinstance(parsed["Try-worthiness"], bool):
-                raise ValueError("Try-worthiness must be a boolean")
-            if not isinstance(parsed["Justification"], str):
-                raise ValueError("Justification must be a string")
-
-            # Ensure Code repository is a string
-            parsed["Code repository"] = str(parsed.get("Code repository", ""))
-
-            return parsed
-
-        except json.JSONDecodeError as e:
-            print(f"❌ Failed to parse GPT response as JSON: {e}")
-            print(f"Raw response: {content}")
-            return {
+            # Fallback to eval if JSON parsing fails
+            parsed = eval(content)
+        except Exception as e:
+            print(f"❌ Error parsing GPT output: {e}")
+            parsed = {
                 "Clarity": 1,
                 "Novelty": 1,
                 "Significance": 1,
                 "Try-worthiness": False,
                 "Justification": f"Error parsing response: {str(e)}",
-                "Code repository": ""
-            }
-        except ValueError as e:
-            print(f"❌ Invalid response format: {e}")
-            print(f"Raw response: {content}")
-            return {
-                "Clarity": 1,
-                "Novelty": 1,
-                "Significance": 1,
-                "Try-worthiness": False,
-                "Justification": f"Error validating response: {str(e)}",
-                "Code repository": ""
+                "Code repository": metadata.get("code_url", "")
             }
 
-    except Exception as e:
-        print(f"❌ Error calling GPT API: {str(e)}")
-        return {
-            "Clarity": 1,
-            "Novelty": 1,
-            "Significance": 1,
-            "Try-worthiness": False,
-            "Justification": f"Error calling GPT API: {str(e)}",
-            "Code repository": ""
-        }
+    if return_usage:
+        return parsed, response.usage
+    return parsed
