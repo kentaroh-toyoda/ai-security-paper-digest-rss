@@ -35,14 +35,36 @@ total_tokens = 0
 def fetch_openalex_24h():
     since = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
     print(f"\n🔍 Fetching OpenAlex papers since: {since}")
-    url = f"{OPENALEX_URL}?filter=from_publication_date:{since}&per-page=100&mailto={OPENALEX_EMAIL}"
-    resp = requests.get(url)
-    results = resp.json().get("results", [])
+
+    all_results = []
+    page = 1
+    per_page = 100  # Maximum page size
+
+    while True:
+        url = f"{OPENALEX_URL}?filter=from_publication_date:{since}&per-page={per_page}&page={page}&mailto={OPENALEX_EMAIL}"
+        print(f"📄 Fetching page {page}...")
+        resp = requests.get(url)
+        data = resp.json()
+        results = data.get("results", [])
+
+        if not results:  # No more results
+            break
+
+        all_results.extend(results)
+        print(f"📚 Found {len(results)} papers on page {page}")
+
+        # Check if we've reached the last page
+        meta = data.get("meta", {})
+        if page >= meta.get("page_count", 1):
+            break
+
+        page += 1
+        time.sleep(1)  # Be nice to the API
 
     # Filter papers based on their availability date
     current_date = datetime.now(timezone.utc).date()
     valid_results = []
-    for paper in results:
+    for paper in all_results:
         pub_date = paper.get("publication_date")
         if pub_date:
             try:
@@ -60,7 +82,7 @@ def fetch_openalex_24h():
                     f"⚠️ Skipping paper with invalid date format {pub_date}: {paper.get('title', 'Unknown')}")
 
     print(
-        f"📊 Found {len(results)} papers, {len(valid_results)} available for processing")
+        f"📊 Found {len(all_results)} total papers, {len(valid_results)} available for processing")
     return valid_results
 
 
