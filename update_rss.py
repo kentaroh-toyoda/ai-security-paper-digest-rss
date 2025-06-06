@@ -37,7 +37,31 @@ def fetch_openalex_24h():
     print(f"\n🔍 Fetching OpenAlex papers since: {since}")
     url = f"{OPENALEX_URL}?filter=from_publication_date:{since}&per-page=100&mailto={OPENALEX_EMAIL}"
     resp = requests.get(url)
-    return resp.json().get("results", [])
+    results = resp.json().get("results", [])
+
+    # Filter papers based on their availability date
+    current_date = datetime.now(timezone.utc).date()
+    valid_results = []
+    for paper in results:
+        pub_date = paper.get("publication_date")
+        if pub_date:
+            try:
+                paper_date = datetime.strptime(pub_date, "%Y-%m-%d").date()
+                # Include papers that are either:
+                # 1. Published in the last 24 hours, or
+                # 2. In early access (future publication date) but available now
+                if paper_date <= current_date or paper.get("is_oa", False):
+                    valid_results.append(paper)
+                else:
+                    print(
+                        f"ℹ️ Skipping future paper (not yet available): {paper.get('title', 'Unknown')} (pub date: {pub_date})")
+            except ValueError:
+                print(
+                    f"⚠️ Skipping paper with invalid date format {pub_date}: {paper.get('title', 'Unknown')}")
+
+    print(
+        f"📊 Found {len(results)} papers, {len(valid_results)} available for processing")
+    return valid_results
 
 
 def fetch_arxiv():
@@ -135,6 +159,7 @@ def build_rss_feed(relevant_papers):
 def process_papers(raw_papers, source):
     global total_tokens
     relevant = []
+    current_date = datetime.now(timezone.utc).date()
 
     for paper in raw_papers:
         # Extract info based on source
@@ -146,17 +171,33 @@ def process_papers(raw_papers, source):
                 "display_name", "") for a in paper.get("authorships", [])])
             date = paper.get("publication_date", datetime.now(
                 timezone.utc).date().isoformat())
+            is_early_access = paper.get("is_oa", False)
         else:  # arxiv
             title = paper.title
             url = paper.link
             abstract = paper.summary if hasattr(paper, 'summary') else ""
             authors = paper.author if hasattr(paper, 'author') else "Unknown"
             date = datetime.now(timezone.utc).date().isoformat()
+            is_early_access = False
 
         if not title or not url:
             continue
 
+        # Validate date
+        try:
+            paper_date = datetime.strptime(date, "%Y-%m-%d").date()
+            if paper_date > current_date and not is_early_access:
+                print(
+                    f"ℹ️ Skipping future paper (not yet available): {title} (pub date: {date})")
+                continue
+        except ValueError:
+            print(
+                f"⚠️ Skipping paper with invalid date format {date}: {title}")
+            continue
+
         print(f"\n📅 Processing paper published on: {date}")
+        if is_early_access:
+            print("📢 Note: This is an early access paper")
         print(f"📄 Title: {title}")
 
         if paper_exists_in_baserow(url, BASEROW_API_TOKEN, BASEROW_TABLE_ID):
