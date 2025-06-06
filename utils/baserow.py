@@ -376,3 +376,20 @@ def update_paper_in_baserow(paper, api_token, table_id):
     except requests.exceptions.RequestException as e:
         print(f"Error updating paper in Baserow: {e}")
         return False
+
+
+def delete_paper_from_baserow(paper_id: str, api_token: str, table_id: str) -> bool:
+    """Delete a paper from Baserow."""
+    url = f"{BASEROW_API_URL}/rows/table/{table_id}/{paper_id}/"
+    headers = {
+        "Authorization": f"Token {api_token}",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        response = requests.delete(url, headers=headers)
+        response.raise_for_status()
+        return True
+    except requests.exceptions.RequestException as e:
+        print(f"Error deleting paper from Baserow: {e}")
+        return False

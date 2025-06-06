@@ -4,7 +4,7 @@ import os
 import sys
 import json
 from dotenv import load_dotenv
-from utils.baserow import get_all_papers, update_paper_in_baserow
+from utils.baserow import get_all_papers, delete_paper_from_baserow
 from utils.gpt import assess_relevance_and_tags
 
 load_dotenv()
@@ -66,6 +66,7 @@ def main():
 
     relevant_count = 0
     irrelevant_count = 0
+    deleted_count = 0
 
     for paper in papers:
         title = get_field(paper, FIELD_TITLE) or "Unknown Title"
@@ -80,22 +81,21 @@ def main():
             print("❌ Paper is not relevant to AI security")
             irrelevant_count += 1
 
-            # Update the paper in Baserow to mark it as irrelevant
-            update_data = {
-                FIELD_RELEVANCE: 0,
-                FIELD_TAGS: "irrelevant"
-            }
-            paper.update(update_data)
-
-            if update_paper_in_baserow(paper, BASEROW_API_TOKEN, BASEROW_TABLE_ID):
-                print("📝 Updated paper in Baserow")
+            # Delete the paper from Baserow
+            if "id" in paper:
+                if delete_paper_from_baserow(paper["id"], BASEROW_API_TOKEN, BASEROW_TABLE_ID):
+                    print("🗑️ Deleted paper from Baserow")
+                    deleted_count += 1
+                else:
+                    print("❌ Failed to delete paper from Baserow")
             else:
-                print("❌ Failed to update paper in Baserow")
+                print("⚠️ Paper has no ID, cannot delete")
 
     print(f"\n📊 Summary:")
     print(f"Total papers checked: {len(papers)}")
     print(f"Relevant papers: {relevant_count}")
     print(f"Irrelevant papers: {irrelevant_count}")
+    print(f"Successfully deleted: {deleted_count}")
 
 
 if __name__ == "__main__":
