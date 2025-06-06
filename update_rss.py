@@ -187,8 +187,17 @@ def process_papers(raw_papers, source):
                 html_response = requests.get(html_url)
                 if html_response.status_code == 200:
                     print(f"📄 Assessing quality for: {title}")
-                    quality = assess_paper_quality(
-                        title, html_response.text, OPENAI_API_KEY)
+                    # Create metadata dictionary for quality assessment
+                    metadata = {
+                        'title': title,
+                        'abstract': abstract,
+                        'date': date,
+                        'cited_by_count': 0,  # arXiv doesn't provide citation count
+                        'publication_type': 'preprint',
+                        'source': 'arXiv',
+                        'code_url': None  # We'll try to find this in the HTML
+                    }
+                    quality = assess_paper_quality(metadata, OPENAI_API_KEY)
                     if quality:  # Only update if we got valid quality assessment
                         row.update(quality)
                 else:
