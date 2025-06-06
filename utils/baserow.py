@@ -315,17 +315,39 @@ def get_conversation_history(api_token: str, table_id: str, paper_url: str) -> l
 
 
 def get_all_papers(api_token, table_id):
-    """Get all papers from Baserow."""
-    url = f"https://api.baserow.io/api/database/rows/table/{table_id}/"
+    """Get all papers from Baserow with pagination support."""
+    base_url = f"https://api.baserow.io/api/database/rows/table/{table_id}/"
     headers = {
         "Authorization": f"Token {api_token}",
         "Content-Type": "application/json"
     }
 
+    all_papers = []
+    page = 1
+    size = 100  # Maximum page size
+
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        return response.json().get("results", [])
+        while True:
+            url = f"{base_url}?page={page}&size={size}"
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
+
+            data = response.json()
+            papers = data.get("results", [])
+
+            if not papers:  # No more papers to fetch
+                break
+
+            all_papers.extend(papers)
+            print(f"📚 Fetched page {page} ({len(papers)} papers)")
+
+            if len(papers) < size:  # Last page
+                break
+
+            page += 1
+
+        print(f"📊 Total papers fetched: {len(all_papers)}")
+        return all_papers
     except requests.exceptions.RequestException as e:
         print(f"Error fetching papers from Baserow: {e}")
         return []
