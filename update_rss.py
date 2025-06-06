@@ -241,16 +241,23 @@ def process_papers(raw_papers, source):
                         'cited_by_count': 0,  # arXiv doesn't provide citation count
                         'publication_type': 'preprint',
                         'source': 'arXiv',
-                        'code_url': None  # We'll try to find this in the HTML
+                        'code_url': ''  # Empty string instead of None
                     }
                     quality = assess_paper_quality(metadata, OPENAI_API_KEY)
                     if quality:  # Only update if we got valid quality assessment
+                        # Convert "None" to empty string for code repository
+                        if "Code repository" in quality and quality["Code repository"] == "None":
+                            quality["Code repository"] = ""
                         row.update(quality)
                 else:
                     print(f"⚠️ Failed to retrieve HTML for: {title}")
             except Exception as e:
                 print(f"❌ Error fetching full text: {e}")
                 print(f"Continuing without quality assessment for: {title}")
+
+        # Ensure code repository is empty string if not present
+        if "Code repository" not in row or row["Code repository"] == "None":
+            row["Code repository"] = ""
 
         insert_to_baserow(row, BASEROW_API_TOKEN, BASEROW_TABLE_ID)
         relevant.append(row)
