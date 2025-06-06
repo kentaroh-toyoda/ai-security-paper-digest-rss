@@ -34,6 +34,7 @@ total_tokens = 0
 
 def fetch_openalex_24h():
     since = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
+    print(f"\n🔍 Fetching OpenAlex papers since: {since}")
     url = f"{OPENALEX_URL}?filter=from_publication_date:{since}&per-page=100&mailto={OPENALEX_EMAIL}"
     resp = requests.get(url)
     return resp.json().get("results", [])
@@ -42,6 +43,7 @@ def fetch_openalex_24h():
 def fetch_arxiv():
     entries = []
     cutoff_time = datetime.now(timezone.utc) - timedelta(days=1)
+    print(f"\n🔍 Fetching ArXiv papers since: {cutoff_time.isoformat()}")
 
     for feed_url in ARXIV_FEEDS:
         parsed = feedparser.parse(feed_url)
@@ -153,6 +155,9 @@ def process_papers(raw_papers, source):
 
         if not title or not url:
             continue
+
+        print(f"\n📅 Processing paper published on: {date}")
+        print(f"📄 Title: {title}")
 
         if paper_exists_in_baserow(url, BASEROW_API_TOKEN, BASEROW_TABLE_ID):
             print(f"⏭️ Already exists: {title}")
