@@ -189,11 +189,13 @@ def process_papers(raw_papers, source):
                     print(f"📄 Assessing quality for: {title}")
                     quality = assess_paper_quality(
                         title, html_response.text, OPENAI_API_KEY)
-                    row.update(quality)
+                    if quality:  # Only update if we got valid quality assessment
+                        row.update(quality)
                 else:
                     print(f"⚠️ Failed to retrieve HTML for: {title}")
             except Exception as e:
                 print(f"❌ Error fetching full text: {e}")
+                print(f"Continuing without quality assessment for: {title}")
 
         insert_to_baserow(row, BASEROW_API_TOKEN, BASEROW_TABLE_ID)
         relevant.append(row)
