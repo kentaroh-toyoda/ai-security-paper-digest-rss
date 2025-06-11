@@ -243,8 +243,8 @@ def process_papers(raw_papers, source):
                 timezone.utc).date().isoformat())
             is_early_access = paper.get("is_oa", False)
         else:  # arxiv
-            title = paper.title
-            url = paper.link
+            title = paper.title if hasattr(paper, 'title') else ""
+            url = paper.link if hasattr(paper, 'link') else ""
             abstract = paper.summary if hasattr(paper, 'summary') else ""
             authors = paper.author if hasattr(paper, 'author') else "Unknown"
             date = datetime.now(timezone.utc).date().isoformat()
@@ -284,7 +284,23 @@ def process_papers(raw_papers, source):
             continue
 
         print(f"✅ Relevant: {title}")
-        row = process_paper(paper)
+
+        # Create a paper dict that matches what process_paper expects
+        paper_dict = {
+            "title": title,
+            "abstract": abstract,
+            "url": url,
+            "authors": authors,
+            "date": date,
+            "source": source,
+            "arxiv_id": url.split("/")[-1] if "arxiv.org" in url else "",
+            "openalex_id": paper.get("id", "") if source == "openalex" else "",
+            "cited_by_count": paper.get("cited_by_count", 0) if source == "openalex" else 0,
+            "publication_type": "preprint" if source == "arxiv" else paper.get("type", ""),
+            "code_repository": ""
+        }
+
+        row = process_paper(paper_dict)
 
         # For arXiv papers, fetch full text and assess quality
         if "arxiv.org" in url:
