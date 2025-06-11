@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from qdrant_client.http.models import Distance, VectorParams, PointStruct
+import uuid
 
 COLLECTION_NAME = "ai_security_papers"
 
@@ -45,6 +46,12 @@ def ensure_collection_exists(client: QdrantClient) -> None:
         )
 
 
+def generate_point_id(url: str) -> str:
+    """Generate a unique ID for a paper based on its URL.
+    Returns a UUID string that's compatible with Qdrant's ID requirements."""
+    return str(uuid.uuid5(uuid.NAMESPACE_URL, url))
+
+
 def paper_exists(client: QdrantClient, paper_url: str) -> bool:
     """Check if a paper with the given URL already exists."""
     response = client.scroll(
@@ -72,7 +79,7 @@ def insert_paper(client: QdrantClient, paper_data: Dict[str, Any]) -> bool:
 
         # Create point with dummy vector since we're using Qdrant as a document store
         point = PointStruct(
-            id=hash(paper_data["url"]),  # Use URL hash as ID
+            id=generate_point_id(paper_data["url"]),  # Generate UUID from URL
             vector=[0.0],  # Dummy vector
             payload=paper_data
         )
@@ -86,6 +93,9 @@ def insert_paper(client: QdrantClient, paper_data: Dict[str, Any]) -> bool:
 
     except Exception as e:
         print(f"❌ Error pushing to Qdrant: {str(e)}")
+        if hasattr(e, 'response'):
+            print("Raw response content:")
+            print(e.response.content)
         return False
 
 
