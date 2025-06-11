@@ -180,7 +180,7 @@ def assess_paper_quality(metadata: dict, api_key: str, return_usage=False):
             - cited_by_count: Number of citations
             - publication_type: Type of publication
             - source: Publication source/venue
-            - code_url: URL to code repository if available
+            - code_repository: URL to code repository if available
             - date: Publication date (YYYY-MM-DD)
         api_key: OpenAI API key
         return_usage: Whether to return token usage information
@@ -223,16 +223,16 @@ Publication Date: {metadata['date']}
 Citations: {metadata['cited_by_count']} ({citation_context})
 Publication Type: {metadata['publication_type']}
 Source/Venue: {metadata['source']}
-Code URL: {metadata['code_url']}
+Code Repository: {metadata['code_repository']}
 
 Please assess the paper and output JSON:
 {{
-  "Clarity": score from 1 to 5,
-  "Novelty": score from 1 to 5,
-  "Significance": score from 1 to 5,
-  "Try-worthiness": true or false,
-  "Justification": "brief explanation of the scores",
-  "Code repository": "GitHub URL or similar, if found"
+  "clarity": score from 1 to 5,
+  "novelty": score from 1 to 5,
+  "significance": score from 1 to 5,
+  "try_worthiness": true or false,
+  "justification": "brief explanation of the scores",
+  "code_repository": "GitHub URL or similar, if found"
 }}"""
 
     response = client.chat.completions.create(
