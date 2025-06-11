@@ -3,31 +3,37 @@ import json
 import time
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
-from utils.baserow import get_all_papers, insert_to_baserow, paper_exists_in_baserow, FIELD_TITLE, FIELD_URL, FIELD_ABSTRACT, FIELD_TAGS, FIELD_AUTHORS, FIELD_DATE, FIELD_RELEVANCE, FIELD_SUMMARY, FIELD_PAPER_TYPE, FIELD_CLARITY, FIELD_NOVELTY, FIELD_SIGNIFICANCE, FIELD_TRY_WORTHINESS, FIELD_JUSTIFICATION, FIELD_CODE_REPO
+from utils.qdrant import init_qdrant_client, ensure_collection_exists, paper_exists, insert_paper, get_all_papers
 from utils.gpt import assess_relevance_and_tags, assess_paper_quality
 from collections import defaultdict
 import requests
 from urllib.parse import quote
 import openai
+from qdrant_client import QdrantClient
+from qdrant_client.http.models import Filter, FieldCondition, MatchValue
 
 # Load environment variables
 load_dotenv()
 
 # Get API keys and configuration
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-BASEROW_API_TOKEN = os.getenv("BASEROW_API_TOKEN")
-BASEROW_TABLE_ID = os.getenv("BASEROW_TABLE_ID")
+QDRANT_API_URL = os.getenv("QDRANT_API_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 OPENALEX_EMAIL = os.getenv("OPENALEX_EMAIL")
 OPENALEX_URL = "https://api.openalex.org/works"
 
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY environment variable is not set")
-if not BASEROW_API_TOKEN:
-    raise ValueError("BASEROW_API_TOKEN environment variable is not set")
-if not BASEROW_TABLE_ID:
-    raise ValueError("BASEROW_TABLE_ID environment variable is not set")
+if not QDRANT_API_URL:
+    raise ValueError("QDRANT_API_URL environment variable is not set")
+if not QDRANT_API_KEY:
+    raise ValueError("QDRANT_API_KEY environment variable is not set")
 if not OPENALEX_EMAIL:
     raise ValueError("OPENALEX_EMAIL environment variable is not set")
+
+# Initialize Qdrant client
+qdrant_client = init_qdrant_client()
+ensure_collection_exists(qdrant_client)
 
 
 def fetch_from_openalex(query: str, start_date: str = None, max_pages: int = 10) -> list:
@@ -114,7 +120,7 @@ def fetch_from_openalex(query: str, start_date: str = None, max_pages: int = 10)
 
 
 def process_paper(paper: dict) -> dict:
-    """Process a paper and prepare it for Baserow."""
+    """Process a paper and prepare it for Qdrant."""
     title = paper.get("title", "Unknown")
     print(f"\n🔍 Processing paper: {title}")
 
@@ -151,24 +157,23 @@ def process_paper(paper: dict) -> dict:
     print(f"  Date: {pub_date}")
     print(f"  Authors: {', '.join(authors)}")
 
-    # Initialize paper data with all required fields using Baserow field IDs
-    # Set default values for rating fields to 3 (neutral)
+    # Initialize paper data
     paper_data = {
-        FIELD_TITLE: title,
-        FIELD_ABSTRACT: abstract_text,
-        FIELD_URL: url,
-        FIELD_DATE: pub_date,
-        FIELD_AUTHORS: ", ".join(authors),
-        FIELD_TAGS: [],
-        FIELD_SUMMARY: [],
-        FIELD_RELEVANCE: 0,
-        FIELD_PAPER_TYPE: "Other",
-        FIELD_CLARITY: 3,  # Default neutral rating
-        FIELD_NOVELTY: 3,  # Default neutral rating
-        FIELD_SIGNIFICANCE: 3,  # Default neutral rating
-        FIELD_TRY_WORTHINESS: 3,  # Default neutral rating
-        FIELD_JUSTIFICATION: "Quality assessment not available",
-        FIELD_CODE_REPO: ""
+        "title": title,
+        "abstract": abstract_text,
+        "url": url,
+        "date": pub_date,
+        "authors": ", ".join(authors),
+        "tags": [],
+        "summary": [],
+        "relevance_score": 0,
+        "paper_type": "Other",
+        "clarity": 3,  # Default neutral rating
+        "novelty": 3,  # Default neutral rating
+        "significance": 3,  # Default neutral rating
+        "try_worthiness": 3,  # Default neutral rating
+        "justification": "Quality assessment not available",
+        "code_repo": ""
     }
 
     # Process paper even if we don't have an abstract
@@ -187,16 +192,16 @@ def process_paper(paper: dict) -> dict:
 
         if result.get("relevant", False):
             print(f"✅ Paper is relevant")
-            paper_data[FIELD_TAGS] = result.get("tags", [])
-            paper_data[FIELD_RELEVANCE] = result.get("relevance_score", 0)
-            paper_data[FIELD_PAPER_TYPE] = result.get(
+            paper_data["tags"] = result.get("tags", [])
+            paper_data["relevance_score"] = result.get("relevance_score", 0)
+            paper_data["paper_type"] = result.get(
                 "paper_type", "Research Paper")
-            paper_data[FIELD_SUMMARY] = result.get("summary", [])
+            paper_data["summary"] = result.get("summary", [])
 
             print(f"📊 Relevance assessment:")
-            print(f"  Score: {paper_data[FIELD_RELEVANCE]}")
-            print(f"  Tags: {', '.join(paper_data[FIELD_TAGS])}")
-            print(f"  Summary: {paper_data[FIELD_SUMMARY]}")
+            print(f"  Score: {paper_data['relevance_score']}")
+            print(f"  Tags: {', '.join(paper_data['tags'])}")
+            print(f"  Summary: {paper_data['summary']}")
 
             print(f"🔍 Assessing paper quality...")
             try:
@@ -205,19 +210,19 @@ def process_paper(paper: dict) -> dict:
                 if quality:
                     print(f"📈 Quality assessment results:")
                     print(json.dumps(quality, indent=2))
-                    # Map quality assessment fields to Baserow field IDs
+                    # Map quality assessment fields
                     if "clarity" in quality:
-                        paper_data[FIELD_CLARITY] = quality["clarity"]
+                        paper_data["clarity"] = quality["clarity"]
                     if "novelty" in quality:
-                        paper_data[FIELD_NOVELTY] = quality["novelty"]
+                        paper_data["novelty"] = quality["novelty"]
                     if "significance" in quality:
-                        paper_data[FIELD_SIGNIFICANCE] = quality["significance"]
+                        paper_data["significance"] = quality["significance"]
                     if "try_worthiness" in quality:
-                        paper_data[FIELD_TRY_WORTHINESS] = quality["try_worthiness"]
+                        paper_data["try_worthiness"] = quality["try_worthiness"]
                     if "justification" in quality:
-                        paper_data[FIELD_JUSTIFICATION] = quality["justification"]
+                        paper_data["justification"] = quality["justification"]
                     if "code_url" in quality:
-                        paper_data[FIELD_CODE_REPO] = quality["code_url"]
+                        paper_data["code_repo"] = quality["code_url"]
             except Exception as e:
                 print(f"⚠️ Warning: Error during quality assessment: {e}")
                 # Keep default values for rating fields
@@ -228,7 +233,7 @@ def process_paper(paper: dict) -> dict:
         return None  # Return None to indicate processing failed
 
     # Validate required fields
-    required_fields = [FIELD_TITLE, FIELD_URL, FIELD_AUTHORS, FIELD_DATE]
+    required_fields = ["title", "url", "authors", "date"]
     print(f"\n🔍 Validating required fields:")
     for field in required_fields:
         value = paper_data.get(field)
@@ -248,10 +253,10 @@ def process_paper(paper: dict) -> dict:
         return None  # Return None to indicate validation failed
 
     # Ensure summary and tags are at least empty lists if not present
-    if not paper_data.get(FIELD_SUMMARY):
-        paper_data[FIELD_SUMMARY] = []
-    if not paper_data.get(FIELD_TAGS):
-        paper_data[FIELD_TAGS] = []
+    if not paper_data.get("summary"):
+        paper_data["summary"] = []
+    if not paper_data.get("tags"):
+        paper_data["tags"] = []
 
     print(f"✅ Paper processed successfully")
     return paper_data
@@ -348,15 +353,15 @@ def main():
         if not url:
             continue
 
-        if paper_exists_in_baserow(url, BASEROW_API_TOKEN, BASEROW_TABLE_ID):
+        if paper_exists(qdrant_client, url):
             existing_papers.append(paper)
             continue
 
         # Process and store new paper
         paper_data = process_paper(paper)
-        if paper_data and insert_to_baserow(paper_data, BASEROW_API_TOKEN, BASEROW_TABLE_ID):
+        if paper_data and insert_paper(qdrant_client, paper_data):
             new_papers.append(paper_data)
-            print(f"✅ Added new paper: {paper_data[FIELD_TITLE]}")
+            print(f"✅ Added new paper: {paper_data['title']}")
         else:
             print(f"❌ Failed to add paper: {paper.get('title', 'Unknown')}")
 
@@ -369,11 +374,11 @@ def main():
     if new_papers:
         print("\nNew papers added:")
         for paper in new_papers:
-            print(f"\nTitle: {paper[FIELD_TITLE]}")
-            print(f"URL: {paper[FIELD_URL]}")
-            print(f"Date: {paper[FIELD_DATE]}")
-            print(f"Relevance score: {paper[FIELD_RELEVANCE]}")
-            print(f"Tags: {', '.join(paper[FIELD_TAGS])}")
+            print(f"\nTitle: {paper['title']}")
+            print(f"URL: {paper['url']}")
+            print(f"Date: {paper['date']}")
+            print(f"Relevance score: {paper['relevance_score']}")
+            print(f"Tags: {', '.join(paper['tags'])}")
             print("-" * 80)
 
 

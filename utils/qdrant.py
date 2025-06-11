@@ -5,6 +5,10 @@ from qdrant_client import QdrantClient
 from qdrant_client.http import models
 from qdrant_client.http.models import Distance, VectorParams, PointStruct
 import uuid
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 COLLECTION_NAME = "ai_security_papers"
 
@@ -22,28 +26,49 @@ def init_qdrant_client() -> QdrantClient:
 
 
 def ensure_collection_exists(client: QdrantClient) -> None:
-    """Ensure the papers collection exists with proper schema."""
-    collections = client.get_collections().collections
-    exists = any(col.name == COLLECTION_NAME for col in collections)
+    """Ensure the collection exists in Qdrant."""
+    try:
+        # Create collection if it doesn't exist
+        collections = client.get_collections().collections
+        collection_names = [collection.name for collection in collections]
 
-    if not exists:
-        # Create collection with a dummy vector - we're using Qdrant as a document store
-        client.create_collection(
-            collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(size=1, distance=Distance.COSINE),
-        )
+        if COLLECTION_NAME not in collection_names:
+            client.create_collection(
+                collection_name=COLLECTION_NAME,
+                vectors_config=models.VectorParams(
+                    size=1536,  # OpenAI embedding dimension
+                    distance=models.Distance.COSINE
+                )
+            )
+            print(f"Created collection: {COLLECTION_NAME}")
 
-        # Create payload indexes for efficient filtering
-        client.create_payload_index(
-            collection_name=COLLECTION_NAME,
-            field_name="url",
-            field_schema="keyword"
-        )
-        client.create_payload_index(
-            collection_name=COLLECTION_NAME,
-            field_name="date",
-            field_schema="datetime"
-        )
+            # Create index for title field
+            client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name="title",
+                field_schema="keyword"
+            )
+            print("Created index for title field")
+        else:
+            print(f"Collection {COLLECTION_NAME} already exists")
+
+            # Create index for title field if it doesn't exist
+            try:
+                client.create_payload_index(
+                    collection_name=COLLECTION_NAME,
+                    field_name="title",
+                    field_schema="keyword"
+                )
+                print("Created index for title field")
+            except Exception as e:
+                if "already exists" in str(e).lower():
+                    print("Title index already exists")
+                else:
+                    raise
+
+    except Exception as e:
+        print(f"Error ensuring collection exists: {str(e)}")
+        raise
 
 
 def generate_point_id(url: str) -> str:
@@ -77,10 +102,10 @@ def insert_paper(client: QdrantClient, paper_data: Dict[str, Any]) -> bool:
             paper_data["date"] = datetime.fromisoformat(
                 paper_data["date"].replace("Z", "+00:00"))
 
-        # Create point with dummy vector since we're using Qdrant as a document store
+        # Create point with zero vector of correct dimension (1536)
         point = PointStruct(
             id=generate_point_id(paper_data["url"]),  # Generate UUID from URL
-            vector=[0.0],  # Dummy vector
+            vector=[0.0] * 1536,  # Zero vector of correct dimension
             payload=paper_data
         )
 

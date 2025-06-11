@@ -1,7 +1,7 @@
-openai
+openai>=1.0.0
 feedparser
 requests
 feedgen
-python-dotenv
+python-dotenv>=1.0.0
 pandas
-qdrant-client>=1.7.0
+qdrant-client>=1.6.0
