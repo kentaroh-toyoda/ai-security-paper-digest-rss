@@ -175,8 +175,25 @@ def build_rss_feed(relevant_papers):
 
         fe.description("".join(description))
         fe.author({"name": paper["authors"]})
-        fe.pubDate(datetime.fromisoformat(
-            paper["date"]).astimezone(timezone.utc))
+
+        # Handle date conversion more robustly
+        try:
+            if isinstance(paper["date"], str):
+                # Ensure the date string is in ISO format
+                if "T" not in paper["date"]:  # If it's just a date without time
+                    paper["date"] = f"{paper['date']}T00:00:00+00:00"
+                pub_date = datetime.fromisoformat(
+                    paper["date"].replace("Z", "+00:00"))
+            else:
+                # If date is already a datetime object, use it directly
+                pub_date = paper["date"]
+            fe.pubDate(pub_date.astimezone(timezone.utc))
+        except (ValueError, TypeError) as e:
+            print(
+                f"Warning: Could not parse date for paper {paper['title']}: {e}")
+            # Use current time as fallback
+            fe.pubDate(datetime.now(timezone.utc))
+
         fe.guid(paper["url"])
 
     fg.rss_file("rss.xml")
