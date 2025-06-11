@@ -1,2 +1,4 @@
 .env
 papers.csv
+__pycache__/
+*.pyc
