@@ -8,14 +8,14 @@ from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from feedgen.feed import FeedGenerator
 from utils.gpt import assess_relevance_and_tags, assess_paper_quality
-from utils.baserow import insert_to_baserow, paper_exists_in_baserow
+from utils.qdrant import init_qdrant_client, ensure_collection_exists, paper_exists, insert_paper
 
 load_dotenv()
 
 # Environment variables
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-BASEROW_API_TOKEN = os.getenv("BASEROW_API_TOKEN")
-BASEROW_TABLE_ID = os.getenv("BASEROW_TABLE_ID")
+QDRANT_API_URL = os.getenv("QDRANT_API_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 OPENALEX_EMAIL = os.getenv("OPENALEX_EMAIL")
 RSS_FEED_URL = os.getenv("RSS_FEED_URL")
 
@@ -30,6 +30,10 @@ ARXIV_FEEDS = [
 
 # Token usage tracking
 total_tokens = 0
+
+# Initialize Qdrant client
+qdrant_client = init_qdrant_client()
+ensure_collection_exists(qdrant_client)
 
 
 def fetch_openalex_24h():
@@ -114,72 +118,72 @@ def build_rss_feed(relevant_papers):
 
     for paper in relevant_papers:
         fe = fg.add_entry()
-        fe.title(paper["Title"])
-        fe.link(href=paper["URL"])
+        fe.title(paper["title"])
+        fe.link(href=paper["url"])
 
         # Build a more readable description
         description = []
 
         # Summary
-        if "Summary" in paper:
+        if "summary" in paper:
             description.append("<h3>Summary</h3>")
             description.append("<ul>")
-            for point in paper["Summary"]:
+            for point in paper["summary"]:
                 description.append(f"<li>{point}</li>")
             description.append("</ul>")
 
         # Paper Type
-        if "Paper Type" in paper:
+        if "paper_type" in paper:
             description.append("<h3>Paper Type</h3>")
             description.append("<ul>")
-            description.append(f"<li>{paper['Paper Type']}</li>")
+            description.append(f"<li>{paper['paper_type']}</li>")
             description.append("</ul>")
 
         # Quality Assessment
-        if any(key in paper for key in ["Clarity", "Novelty", "Significance", "Try-worthiness"]):
+        if any(key in paper for key in ["clarity", "novelty", "significance", "try_worthiness"]):
             description.append("<h3>Quality Assessment</h3>")
             description.append("<ul>")
-            if "Clarity" in paper:
-                description.append(f"<li>Clarity: {paper['Clarity']}/5</li>")
-            if "Novelty" in paper:
-                description.append(f"<li>Novelty: {paper['Novelty']}/5</li>")
-            if "Significance" in paper:
+            if "clarity" in paper:
+                description.append(f"<li>Clarity: {paper['clarity']}/5</li>")
+            if "novelty" in paper:
+                description.append(f"<li>Novelty: {paper['novelty']}/5</li>")
+            if "significance" in paper:
                 description.append(
-                    f"<li>Significance: {paper['Significance']}/5</li>")
-            if "Try-worthiness" in paper:
+                    f"<li>Significance: {paper['significance']}/5</li>")
+            if "try_worthiness" in paper:
                 description.append(
-                    f"<li>Try-worthiness: {'Yes' if paper['Try-worthiness'] else 'No'}</li>")
-            if "Justification" in paper:
+                    f"<li>Try-worthiness: {'Yes' if paper['try_worthiness'] else 'No'}</li>")
+            if "justification" in paper:
                 description.append(
-                    f"<li>Justification: {paper['Justification']}</li>")
+                    f"<li>Justification: {paper['justification']}</li>")
             description.append("</ul>")
 
         # Additional Information
         description.append("<h3>Additional Information</h3>")
         description.append("<ul>")
-        if "Authors" in paper:
-            description.append(f"<li>Authors: {paper['Authors']}</li>")
-        if "Tags" in paper:
-            description.append(f"<li>Tags: {paper['Tags']}</li>")
-        if "Relevance" in paper:
+        if "authors" in paper:
+            description.append(f"<li>Authors: {paper['authors']}</li>")
+        if "tags" in paper:
+            description.append(f"<li>Tags: {paper['tags']}</li>")
+        if "relevance" in paper:
             description.append(
-                f"<li>Relevance Score: {paper['Relevance']}/5</li>")
-        if "Code repository" in paper and paper["Code repository"]:
+                f"<li>Relevance Score: {paper['relevance']}/5</li>")
+        if "code_repository" in paper and paper["code_repository"]:
             description.append(
-                f"<li>Code Repository: <a href='{paper['Code repository']}'>{paper['Code repository']}</a></li>")
+                f"<li>Code Repository: <a href='{paper['code_repository']}'>{paper['code_repository']}</a></li>")
         description.append("</ul>")
 
         fe.description("".join(description))
-        fe.author({"name": paper["Authors"]})
+        fe.author({"name": paper["authors"]})
         fe.pubDate(datetime.fromisoformat(
-            paper["Date"]).astimezone(timezone.utc))
-        fe.guid(paper["URL"])
+            paper["date"]).astimezone(timezone.utc))
+        fe.guid(paper["url"])
 
     fg.rss_file("rss.xml")
 
 
 def process_paper(paper: dict) -> dict:
-    """Process a paper and prepare it for Baserow."""
+    """Process a paper and prepare it for storage."""
     paper_data = {
         "title": paper.get("title", ""),
         "abstract": paper.get("abstract", ""),
@@ -191,13 +195,13 @@ def process_paper(paper: dict) -> dict:
         "openalex_id": paper.get("openalex_id", ""),
         "cited_by_count": paper.get("cited_by_count", 0),
         "publication_type": paper.get("publication_type", ""),
-        "code_url": paper.get("code_url", ""),
+        "code_repository": paper.get("code_repository", ""),
         "is_relevant": False,
         "tags": [],
         "relevance_score": 0,
         "relevance_reason": "",
         "paper_type": "Other",
-        "modalities": []  # Add new field for modalities
+        "modalities": []
     }
 
     # Assess relevance and get tags
@@ -212,8 +216,7 @@ def process_paper(paper: dict) -> dict:
         paper_data["relevance_score"] = result.get("relevance_score", 0)
         paper_data["relevance_reason"] = result.get("reason", "")
         paper_data["paper_type"] = result.get("paper_type", "Research Paper")
-        paper_data["modalities"] = result.get(
-            "modalities", [])  # Add modalities
+        paper_data["modalities"] = result.get("modalities", [])
         paper_data["summary"] = result.get("summary", [])
 
         # Assess paper quality
@@ -267,7 +270,7 @@ def process_papers(raw_papers, source):
             print("📢 Note: This is an early access paper")
         print(f"📄 Title: {title}")
 
-        if paper_exists_in_baserow(url, BASEROW_API_TOKEN, BASEROW_TABLE_ID):
+        if paper_exists(qdrant_client, url):
             print(f"⏭️ Already exists: {title}")
             continue
 
@@ -299,13 +302,13 @@ def process_papers(raw_papers, source):
                         'cited_by_count': 0,  # arXiv doesn't provide citation count
                         'publication_type': 'preprint',
                         'source': 'arXiv',
-                        'code_url': ''  # Empty string instead of None
+                        'code_repository': ''  # Empty string instead of None
                     }
                     quality = assess_paper_quality(metadata, OPENAI_API_KEY)
                     if quality:  # Only update if we got valid quality assessment
                         # Convert "None" to empty string for code repository
-                        if "Code repository" in quality and quality["Code repository"] == "None":
-                            quality["Code repository"] = ""
+                        if "code_repository" in quality and quality["code_repository"] == "None":
+                            quality["code_repository"] = ""
                         row.update(quality)
                 else:
                     print(f"⚠️ Failed to retrieve HTML for: {title}")
@@ -314,10 +317,10 @@ def process_papers(raw_papers, source):
                 print(f"Continuing without quality assessment for: {title}")
 
         # Ensure code repository is empty string if not present
-        if "Code repository" not in row or row["Code repository"] == "None":
-            row["Code repository"] = ""
+        if "code_repository" not in row or row["code_repository"] == "None":
+            row["code_repository"] = ""
 
-        insert_to_baserow(row, BASEROW_API_TOKEN, BASEROW_TABLE_ID)
+        insert_paper(qdrant_client, row)
         relevant.append(row)
         time.sleep(1.5)  # prevent rate limiting
 

@@ -12,8 +12,8 @@ jobs:
       GH_PAT: ${{ secrets.GH_PAT }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       OPENALEX_EMAIL: ${{ secrets.OPENALEX_EMAIL }}
-      BASEROW_API_TOKEN: ${{ secrets.BASEROW_API_TOKEN }}
-      BASEROW_TABLE_ID: ${{ secrets.BASEROW_TABLE_ID }}
+      QDRANT_API_URL: ${{ secrets.QDRANT_API_URL }}
+      QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
       RSS_FEED_URL: ${{ secrets.RSS_FEED_URL }}
 
     steps:
@@ -42,6 +42,13 @@ jobs:
           response=$(curl -s -H "Authorization: Bearer $OPENAI_API_KEY" https://api.openai.com/v1/models)
           if echo "$response" | grep -q "billing_not_active"; then
             echo "::error::OpenAI API key is not active. Please check your billing details on OpenAI's website."
+            exit 1
+          fi
+
+      - name: Check Qdrant credentials
+        run: |
+          if [ -z "$QDRANT_API_URL" ] || [ -z "$QDRANT_API_KEY" ]; then
+            echo "::error::QDRANT_API_URL and QDRANT_API_KEY must be set in repository secrets."
             exit 1
           fi
 

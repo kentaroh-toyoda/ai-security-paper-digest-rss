@@ -4,3 +4,4 @@ requests
 feedgen
 python-dotenv
 pandas
+qdrant-client>=1.7.0
