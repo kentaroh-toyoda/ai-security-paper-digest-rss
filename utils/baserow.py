@@ -6,6 +6,23 @@ import json
 from typing import Dict, Any, List
 from datetime import datetime
 
+# Field mappings for Baserow columns
+FIELD_TITLE = "field_4496823"
+FIELD_URL = "field_4496824"
+FIELD_ABSTRACT = "field_4496825"
+FIELD_TAGS = "field_4496826"
+FIELD_AUTHORS = "field_4496827"
+FIELD_DATE = "field_4496828"
+FIELD_RELEVANCE = "field_4496829"
+FIELD_SUMMARY = "field_4496830"
+FIELD_PAPER_TYPE = "field_4496831"
+FIELD_CLARITY = "field_4496832"
+FIELD_NOVELTY = "field_4496833"
+FIELD_SIGNIFICANCE = "field_4496834"
+FIELD_TRY_WORTHINESS = "field_4496835"
+FIELD_JUSTIFICATION = "field_4496836"
+FIELD_CODE_REPO = "field_4496837"
+
 BASEROW_API_URL = "https://api.baserow.io/api/database"
 
 
@@ -111,17 +128,44 @@ def prepare_row_data(row_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def insert_to_baserow(row_data: Dict[str, Any], token: str, table_id: str) -> bool:
     """Insert a row into Baserow with validation and error handling."""
+    # Map field IDs to names for validation
+    field_mapping = {
+        "field_4496823": "Title",
+        "field_4496824": "URL",
+        "field_4496825": "Abstract",
+        "field_4496826": "Tags",
+        "field_4496827": "Authors",
+        "field_4496828": "Date",
+        "field_4496829": "Relevance",
+        "field_4496830": "Summary",
+        "field_4496831": "Paper Type",
+        "field_4496832": "Clarity",
+        "field_4496833": "Novelty",
+        "field_4496834": "Significance",
+        "field_4496835": "Try-worthiness",
+        "field_4496836": "Justification",
+        "field_4496837": "Code repository"
+    }
+
+    # Convert field IDs to names for validation
+    validation_data = {}
+    for field_id, value in row_data.items():
+        if field_id in field_mapping:
+            validation_data[field_mapping[field_id]] = value
+        else:
+            validation_data[field_id] = value
+
     # Validate data first
-    errors = validate_row_data(row_data)
+    errors = validate_row_data(validation_data)
     if errors:
         print(
-            f"❌ Validation errors for {row_data.get('Title', 'Unknown paper')}:")
+            f"❌ Validation errors for {validation_data.get('Title', 'Unknown paper')}:")
         for error in errors:
             print(f"  - {error}")
         return False
 
     # Prepare data for Baserow
-    prepared_data = prepare_row_data(row_data)
+    prepared_data = prepare_row_data(validation_data)
 
     # Debug print the prepared data
     print("\nPrepared data for Baserow:")
@@ -141,10 +185,10 @@ def insert_to_baserow(row_data: Dict[str, Any], token: str, table_id: str) -> bo
 
         # Consider both 200 and 201 as success
         if response.status_code in [200, 201]:
-            print(f"✅ Added to Baserow: {row_data['Title']}")
+            print(f"✅ Added to Baserow: {validation_data['Title']}")
             return True
         else:
-            print(f"❌ Baserow push failed for: {row_data['Title']}")
+            print(f"❌ Baserow push failed for: {validation_data['Title']}")
             print("Response status:", response.status_code)
             print("Response headers:", json.dumps(
                 dict(response.headers), indent=2))
@@ -314,43 +358,25 @@ def get_conversation_history(api_token: str, table_id: str, paper_url: str) -> l
     return response.json()["results"]
 
 
-def get_all_papers(api_token, table_id):
-    """Get all papers from Baserow with pagination support."""
-    base_url = f"https://api.baserow.io/api/database/rows/table/{table_id}/"
-    headers = {
-        "Authorization": f"Token {api_token}",
-        "Content-Type": "application/json"
-    }
-
+def get_all_papers(token: str, table_id: str) -> List[Dict[str, Any]]:
+    """Fetch all papers from Baserow."""
+    headers = {"Authorization": f"Token {token}"}
+    url = f"{BASEROW_API_URL}/rows/table/{table_id}/?user_field_names=true"
     all_papers = []
     page = 1
-    size = 100  # Maximum page size
-
-    try:
-        while True:
-            url = f"{base_url}?page={page}&size={size}"
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
-
-            data = response.json()
-            papers = data.get("results", [])
-
-            if not papers:  # No more papers to fetch
-                break
-
-            all_papers.extend(papers)
-            print(f"📚 Fetched page {page} ({len(papers)} papers)")
-
-            if len(papers) < size:  # Last page
-                break
-
-            page += 1
-
-        print(f"📊 Total papers fetched: {len(all_papers)}")
-        return all_papers
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching papers from Baserow: {e}")
-        return []
+    while True:
+        page_url = f"{url}&page={page}"
+        response = requests.get(page_url, headers=headers)
+        if response.status_code != 200:
+            print(f"❌ Failed to fetch papers: {response.text}")
+            break
+        data = response.json()
+        papers = data.get("results", [])
+        if not papers:
+            break
+        all_papers.extend(papers)
+        page += 1
+    return all_papers
 
 
 def update_paper_in_baserow(paper, api_token, table_id):
@@ -369,27 +395,42 @@ def update_paper_in_baserow(paper, api_token, table_id):
     update_data = paper.copy()
     update_data.pop("id", None)
 
+    # Debug: print the update payload
+    print("\n[DEBUG] Update payload:")
+    print(json.dumps(update_data, indent=2))
+
     try:
         response = requests.patch(url, headers=headers, json=update_data)
+        if response.status_code != 200:
+            print(f"[DEBUG] Response status: {response.status_code}")
+            print(f"[DEBUG] Response body: {response.text}")
         response.raise_for_status()
         return True
     except requests.exceptions.RequestException as e:
         print(f"Error updating paper in Baserow: {e}")
+        if hasattr(e.response, 'text'):
+            print(f"[DEBUG] Error response: {e.response.text}")
         return False
 
 
-def delete_paper_from_baserow(paper_id: str, api_token: str, table_id: str) -> bool:
+def delete_paper_from_baserow(paper_id: str, token: str, table_id: str) -> bool:
     """Delete a paper from Baserow."""
     url = f"{BASEROW_API_URL}/rows/table/{table_id}/{paper_id}/"
     headers = {
-        "Authorization": f"Token {api_token}",
+        "Authorization": f"Token {token}",
         "Content-Type": "application/json"
     }
 
     try:
         response = requests.delete(url, headers=headers)
-        response.raise_for_status()
-        return True
-    except requests.exceptions.RequestException as e:
-        print(f"Error deleting paper from Baserow: {e}")
+        if response.status_code == 204:  # 204 No Content is success for DELETE
+            print(f"✅ Successfully deleted paper with ID: {paper_id}")
+            return True
+        else:
+            print(f"❌ Failed to delete paper with ID: {paper_id}")
+            print(f"Response status: {response.status_code}")
+            print(f"Response: {response.text}")
+            return False
+    except Exception as e:
+        print(f"❌ Error deleting paper: {str(e)}")
         return False

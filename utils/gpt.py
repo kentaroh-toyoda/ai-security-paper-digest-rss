@@ -13,6 +13,7 @@ load_dotenv()
 
 # Default configuration
 DEFAULT_MODEL = "gpt-4.1"
+DEFAULT_MINI_MODEL = "gpt-4.1-mini"
 DEFAULT_TEMPERATURE = 0.1
 
 
@@ -58,7 +59,7 @@ Respond with ONLY the search query, no explanations."""
 
     try:
         response = client.chat.completions.create(
-            model=DEFAULT_MODEL,
+            model=DEFAULT_MINI_MODEL,  # Using mini model for this simpler task
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": topic}
@@ -71,7 +72,7 @@ Respond with ONLY the search query, no explanations."""
         return topic
 
 
-def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "gpt-4.1") -> Tuple[Dict[str, Any], int]:
+def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "gpt-4.1-mini", use_mini: bool = False) -> Tuple[Dict[str, Any], int]:
     """Assess if a paper is relevant and extract tags using GPT."""
     client = OpenAI(api_key=api_key)
 
@@ -115,12 +116,21 @@ Paper Types to Identify (choose ONE that best fits):
 - Position Paper: Opinion or perspective on a topic
 - Other: Any other type not covered above
 
+Modality Types to Identify (choose ALL that apply):
+- Text: Papers focusing on text-based models (LLMs, text classification, etc.)
+- Image: Papers focusing on image-based models (computer vision, image generation, etc.)
+- Video: Papers focusing on video-based models (video understanding, generation, etc.)
+- Audio: Papers focusing on audio-based models (speech recognition, audio generation, etc.)
+- Multimodal: Papers focusing on multiple modalities (text+image, text+audio, etc.)
+- Other: Papers focusing on other modalities or general AI security concepts
+
 If the paper is relevant:
 1. Provide a brief summary (2-4 bullet points)
 2. Extract 3-5 relevant tags
 3. Rate relevance from 1-5 (5 being most relevant)
 4. Provide a brief reason for the relevance rating
 5. Identify the paper type (choose ONE that best fits)
+6. Identify the modalities (choose ALL that apply)
 
 If the paper is not relevant, simply respond with {"relevant": false}.
 
@@ -131,12 +141,13 @@ Respond in JSON format:
     "tags": ["tag1", "tag2", ...],
     "relevance_score": 1-5,
     "reason": "brief explanation",
-    "paper_type": "type"
+    "paper_type": "type",
+    "modalities": ["text", "image", "video", "audio", "multimodal", "other"]
 }"""
 
     try:
         response = client.chat.completions.create(
-            model=model,
+            model=DEFAULT_MINI_MODEL if use_mini else model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text}
@@ -225,7 +236,7 @@ Please assess the paper and output JSON:
 }}"""
 
     response = client.chat.completions.create(
-        model=config["model"],
+        model=config["model"],  # Keep using full model for quality assessment
         temperature=config["temperature"],
         messages=[
             {"role": "system", "content": system_prompt},
@@ -248,14 +259,14 @@ Please assess the paper and output JSON:
         except Exception as e:
             print(f"❌ Error parsing GPT output: {e}")
             parsed = {
-                "Clarity": 1,
-                "Novelty": 1,
-                "Significance": 1,
+                "Clarity": 0,
+                "Novelty": 0,
+                "Significance": 0,
                 "Try-worthiness": False,
-                "Justification": f"Error parsing response: {str(e)}",
-                "Code repository": metadata.get("code_url", "")
+                "Justification": "Error parsing GPT output",
+                "Code repository": None
             }
 
     if return_usage:
-        return parsed, response.usage
+        return parsed, response.usage.total_tokens
     return parsed

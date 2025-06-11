@@ -3,3 +3,4 @@ feedparser
 requests
 feedgen
 python-dotenv
+pandas

@@ -178,6 +178,51 @@ def build_rss_feed(relevant_papers):
     fg.rss_file("rss.xml")
 
 
+def process_paper(paper: dict) -> dict:
+    """Process a paper and prepare it for Baserow."""
+    paper_data = {
+        "title": paper.get("title", ""),
+        "abstract": paper.get("abstract", ""),
+        "url": paper.get("url", ""),
+        "date": paper.get("date", ""),
+        "authors": paper.get("authors", ""),
+        "source": paper.get("source", ""),
+        "arxiv_id": paper.get("arxiv_id", ""),
+        "openalex_id": paper.get("openalex_id", ""),
+        "cited_by_count": paper.get("cited_by_count", 0),
+        "publication_type": paper.get("publication_type", ""),
+        "code_url": paper.get("code_url", ""),
+        "is_relevant": False,
+        "tags": [],
+        "relevance_score": 0,
+        "relevance_reason": "",
+        "paper_type": "Other",
+        "modalities": []  # Add new field for modalities
+    }
+
+    # Assess relevance and get tags
+    result, token_count = assess_relevance_and_tags(
+        text=f"Title: {paper['title']}\n\nAbstract: {paper['abstract']}",
+        api_key=OPENAI_API_KEY
+    )
+
+    if result.get("relevant", False):
+        paper_data["is_relevant"] = True
+        paper_data["tags"] = result.get("tags", [])
+        paper_data["relevance_score"] = result.get("relevance_score", 0)
+        paper_data["relevance_reason"] = result.get("reason", "")
+        paper_data["paper_type"] = result.get("paper_type", "Research Paper")
+        paper_data["modalities"] = result.get(
+            "modalities", [])  # Add modalities
+        paper_data["summary"] = result.get("summary", [])
+
+        # Assess paper quality
+        quality = assess_paper_quality(paper_data, OPENAI_API_KEY)
+        paper_data.update(quality)
+
+    return paper_data
+
+
 def process_papers(raw_papers, source):
     global total_tokens
     relevant = []
@@ -236,16 +281,7 @@ def process_papers(raw_papers, source):
             continue
 
         print(f"✅ Relevant: {title}")
-        row = {
-            "Title": title,
-            "URL": url,
-            "Summary": result["summary"],
-            "Tags": ", ".join(result["tags"]),
-            "Authors": authors,
-            "Date": date,
-            "Relevance": result["relevance_score"],
-            "Paper Type": result.get("paper_type", "Other")
-        }
+        row = process_paper(paper)
 
         # For arXiv papers, fetch full text and assess quality
         if "arxiv.org" in url:

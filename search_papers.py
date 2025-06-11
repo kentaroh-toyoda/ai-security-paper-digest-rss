@@ -3,11 +3,12 @@ import json
 import time
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
-from utils.baserow import get_all_papers, insert_to_baserow, paper_exists_in_baserow
+from utils.baserow import get_all_papers, insert_to_baserow, paper_exists_in_baserow, FIELD_TITLE, FIELD_URL, FIELD_ABSTRACT, FIELD_TAGS, FIELD_AUTHORS, FIELD_DATE, FIELD_RELEVANCE, FIELD_SUMMARY, FIELD_PAPER_TYPE, FIELD_CLARITY, FIELD_NOVELTY, FIELD_SIGNIFICANCE, FIELD_TRY_WORTHINESS, FIELD_JUSTIFICATION, FIELD_CODE_REPO
 from utils.gpt import assess_relevance_and_tags, assess_paper_quality
 from collections import defaultdict
 import requests
 from urllib.parse import quote
+import openai
 
 # Load environment variables
 load_dotenv()
@@ -27,23 +28,6 @@ if not BASEROW_TABLE_ID:
     raise ValueError("BASEROW_TABLE_ID environment variable is not set")
 if not OPENALEX_EMAIL:
     raise ValueError("OPENALEX_EMAIL environment variable is not set")
-
-# Map field IDs to logical names
-FIELD_TITLE = "field_4496823"
-FIELD_URL = "field_4496824"
-FIELD_ABSTRACT = "field_4496825"
-FIELD_TAGS = "field_4496826"
-FIELD_AUTHORS = "field_4496827"
-FIELD_DATE = "field_4496828"
-FIELD_RELEVANCE = "field_4496829"
-FIELD_SUMMARY = "field_4496830"
-FIELD_PAPER_TYPE = "field_4496831"
-FIELD_CLARITY = "field_4496832"
-FIELD_NOVELTY = "field_4496833"
-FIELD_SIGNIFICANCE = "field_4496834"
-FIELD_TRY_WORTHINESS = "field_4496835"
-FIELD_JUSTIFICATION = "field_4496836"
-FIELD_CODE_REPO = "field_4496837"
 
 
 def fetch_from_openalex(query: str, start_date: str = None, max_pages: int = 10) -> list:
@@ -244,8 +228,7 @@ def process_paper(paper: dict) -> dict:
         return None  # Return None to indicate processing failed
 
     # Validate required fields
-    required_fields = [FIELD_TITLE, FIELD_URL,
-                       FIELD_SUMMARY, FIELD_TAGS, FIELD_AUTHORS, FIELD_DATE]
+    required_fields = [FIELD_TITLE, FIELD_URL, FIELD_AUTHORS, FIELD_DATE]
     print(f"\n🔍 Validating required fields:")
     for field in required_fields:
         value = paper_data.get(field)
@@ -264,8 +247,51 @@ def process_paper(paper: dict) -> dict:
             print(f"  - Missing or empty required field: {field}")
         return None  # Return None to indicate validation failed
 
+    # Ensure summary and tags are at least empty lists if not present
+    if not paper_data.get(FIELD_SUMMARY):
+        paper_data[FIELD_SUMMARY] = []
+    if not paper_data.get(FIELD_TAGS):
+        paper_data[FIELD_TAGS] = []
+
     print(f"✅ Paper processed successfully")
     return paper_data
+
+
+def generate_related_keywords(query: str, api_key: str) -> list:
+    """Generate related keywords for the search query using GPT."""
+    prompt = f"""Given the search topic "{query}", generate 4 closely related keywords or phrases that would help find relevant papers.
+    The keywords should be specific and focused on the same domain.
+    Return only the keywords as a comma-separated list, without any additional text.
+    Example format: keyword1, keyword2, keyword3, keyword4"""
+
+    try:
+        client = openai.OpenAI(api_key=api_key)
+        response = client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant that generates relevant search keywords for academic papers."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0.7,
+            max_tokens=100
+        )
+
+        # Extract and clean the keywords
+        keywords_text = response.choices[0].message.content.strip()
+        keywords = [k.strip() for k in keywords_text.split(',')]
+
+        # Ensure we have exactly 4 keywords
+        if len(keywords) > 4:
+            keywords = keywords[:4]
+        elif len(keywords) < 4:
+            # If we got fewer than 4 keywords, duplicate the last one
+            while len(keywords) < 4:
+                keywords.append(keywords[-1])
+
+        return keywords
+    except Exception as e:
+        print(f"Error generating related keywords: {e}")
+        return []
 
 
 def main():
@@ -277,6 +303,15 @@ def main():
         query = default_query
         print(f"Using default topic: {query}")
 
+    # Generate related keywords
+    print("\n🔍 Generating related keywords...")
+    related_keywords = generate_related_keywords(query, OPENAI_API_KEY)
+    if related_keywords:
+        print(f"Related keywords: {', '.join(related_keywords)}")
+    else:
+        print("Failed to generate related keywords, using only the main query")
+        related_keywords = []
+
     # Get date range for search
     default_start_date = "2022-01-01"
     start_date = input(
@@ -285,13 +320,26 @@ def main():
         start_date = default_start_date
         print(f"Using default start date: {start_date}")
 
-    # Fetch papers from OpenAlex
-    papers = fetch_from_openalex(query, start_date)
+    # Fetch papers from OpenAlex for main query and related keywords
+    all_papers = []
+    search_queries = [query] + related_keywords
+
+    for search_query in search_queries:
+        print(f"\n🔍 Searching for: {search_query}")
+        papers = fetch_from_openalex(search_query, start_date)
+        if papers:
+            all_papers.extend(papers)
+            print(f"Found {len(papers)} papers for '{search_query}'")
+
+    # Remove duplicates based on OpenAlex ID
+    unique_papers = {paper.get("id"): paper for paper in all_papers}.values()
+    papers = list(unique_papers)
+
     if not papers:
         print("No papers found in OpenAlex")
         return
 
-    print(f"\nProcessing {len(papers)} papers...")
+    print(f"\nProcessing {len(papers)} unique papers...")
     new_papers = []
     existing_papers = []
 
@@ -313,7 +361,7 @@ def main():
             print(f"❌ Failed to add paper: {paper.get('title', 'Unknown')}")
 
     print(f"\n📊 Summary:")
-    print(f"Total papers found: {len(papers)}")
+    print(f"Total unique papers found: {len(papers)}")
     print(f"New papers added: {len(new_papers)}")
     print(f"Existing papers: {len(existing_papers)}")
 
