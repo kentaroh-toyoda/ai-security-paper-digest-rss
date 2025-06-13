@@ -168,12 +168,8 @@ def process_paper(paper: dict) -> dict:
         "summary": [],
         "relevance_score": 0,
         "paper_type": "Other",
-        "clarity": 3,  # Default neutral rating
-        "novelty": 3,  # Default neutral rating
-        "significance": 3,  # Default neutral rating
-        "try_worthiness": 3,  # Default neutral rating
-        "justification": "Quality assessment not available",
-        "code_repo": ""
+        "modalities": [],  # Add modalities field
+        "code_repository": ""  # Add code repository field
     }
 
     # Process paper even if we don't have an abstract
@@ -197,35 +193,18 @@ def process_paper(paper: dict) -> dict:
             paper_data["paper_type"] = result.get(
                 "paper_type", "Research Paper")
             paper_data["summary"] = result.get("summary", [])
+            paper_data["modalities"] = result.get(
+                "modalities", [])  # Store modalities
+            paper_data["code_repository"] = result.get(
+                "code_repository", "")  # Store code repository URL
 
             print(f"📊 Relevance assessment:")
             print(f"  Score: {paper_data['relevance_score']}")
             print(f"  Tags: {', '.join(paper_data['tags'])}")
             print(f"  Summary: {paper_data['summary']}")
-
-            print(f"🔍 Assessing paper quality...")
-            try:
-                # Assess paper quality
-                quality = assess_paper_quality(paper_data, OPENAI_API_KEY)
-                if quality:
-                    print(f"📈 Quality assessment results:")
-                    print(json.dumps(quality, indent=2))
-                    # Map quality assessment fields
-                    if "clarity" in quality:
-                        paper_data["clarity"] = quality["clarity"]
-                    if "novelty" in quality:
-                        paper_data["novelty"] = quality["novelty"]
-                    if "significance" in quality:
-                        paper_data["significance"] = quality["significance"]
-                    if "try_worthiness" in quality:
-                        paper_data["try_worthiness"] = quality["try_worthiness"]
-                    if "justification" in quality:
-                        paper_data["justification"] = quality["justification"]
-                    if "code_url" in quality:
-                        paper_data["code_repo"] = quality["code_url"]
-            except Exception as e:
-                print(f"⚠️ Warning: Error during quality assessment: {e}")
-                # Keep default values for rating fields
+            print(f"  Modalities: {', '.join(paper_data['modalities'])}")
+            if paper_data["code_repository"]:
+                print(f"  Code Repository: {paper_data['code_repository']}")
         else:
             print(f"❌ Paper is not relevant")
     except Exception as e:
@@ -252,11 +231,15 @@ def process_paper(paper: dict) -> dict:
             print(f"  - Missing or empty required field: {field}")
         return None  # Return None to indicate validation failed
 
-    # Ensure summary and tags are at least empty lists if not present
+    # Ensure summary, tags, and modalities are at least empty lists if not present
     if not paper_data.get("summary"):
         paper_data["summary"] = []
     if not paper_data.get("tags"):
         paper_data["tags"] = []
+    if not paper_data.get("modalities"):
+        paper_data["modalities"] = []
+    if not paper_data.get("code_repository"):
+        paper_data["code_repository"] = ""
 
     print(f"✅ Paper processed successfully")
     return paper_data
@@ -277,7 +260,7 @@ def generate_related_keywords(query: str, api_key: str) -> list:
                 {"role": "system", "content": "You are a helpful assistant that generates relevant search keywords for academic papers."},
                 {"role": "user", "content": prompt}
             ],
-            temperature=0.7,
+            temperature=0.1,
             max_tokens=100
         )
 
@@ -347,6 +330,7 @@ def main():
     print(f"\nProcessing {len(papers)} unique papers...")
     new_papers = []
     existing_papers = []
+    irrelevant_papers = []
 
     for paper in papers:
         url = paper.get("id", "")
@@ -357,18 +341,27 @@ def main():
             existing_papers.append(paper)
             continue
 
-        # Process and store new paper
+        # Process paper
         paper_data = process_paper(paper)
-        if paper_data and insert_paper(qdrant_client, paper_data):
-            new_papers.append(paper_data)
-            print(f"✅ Added new paper: {paper_data['title']}")
+
+        # Only store relevant papers
+        if paper_data and paper_data.get("relevance_score", 0) > 0:
+            if insert_paper(qdrant_client, paper_data):
+                new_papers.append(paper_data)
+                print(f"✅ Added relevant paper: {paper_data['title']}")
+            else:
+                print(
+                    f"❌ Failed to add paper: {paper.get('title', 'Unknown')}")
         else:
-            print(f"❌ Failed to add paper: {paper.get('title', 'Unknown')}")
+            irrelevant_papers.append(paper)
+            print(
+                f"⏭️ Skipping irrelevant paper: {paper.get('title', 'Unknown')}")
 
     print(f"\n📊 Summary:")
     print(f"Total unique papers found: {len(papers)}")
-    print(f"New papers added: {len(new_papers)}")
+    print(f"New relevant papers added: {len(new_papers)}")
     print(f"Existing papers: {len(existing_papers)}")
+    print(f"Irrelevant papers skipped: {len(irrelevant_papers)}")
 
     # Show new papers
     if new_papers:
@@ -379,6 +372,8 @@ def main():
             print(f"Date: {paper['date']}")
             print(f"Relevance score: {paper['relevance_score']}")
             print(f"Tags: {', '.join(paper['tags'])}")
+            if paper.get("code_repository"):
+                print(f"Code Repository: {paper['code_repository']}")
             print("-" * 80)
 
 

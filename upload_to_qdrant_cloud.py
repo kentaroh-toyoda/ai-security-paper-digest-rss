@@ -1,10 +1,70 @@
 import pandas as pd
 from dotenv import load_dotenv
 from utils.qdrant import init_qdrant_client, ensure_collection_exists, insert_paper
-from search_paper import search_paper_by_title
+from qdrant_client.http import models
 
 # Load environment variables from .env file
 load_dotenv()
+
+
+def ensure_indexes_exist(client):
+    """Ensure all necessary indexes exist in the collection."""
+    try:
+        # Create index for title field
+        client.create_payload_index(
+            collection_name="ai_security_papers",
+            field_name="title",
+            field_schema="keyword"
+        )
+        print("Created index for title field")
+
+        # Create index for url field
+        client.create_payload_index(
+            collection_name="ai_security_papers",
+            field_name="url",
+            field_schema="keyword"
+        )
+        print("Created index for url field")
+
+        # Create index for authors field
+        client.create_payload_index(
+            collection_name="ai_security_papers",
+            field_name="authors",
+            field_schema="keyword"
+        )
+        print("Created index for authors field")
+
+        # Create index for tags field
+        client.create_payload_index(
+            collection_name="ai_security_papers",
+            field_name="tags",
+            field_schema="keyword"
+        )
+        print("Created index for tags field")
+
+    except Exception as e:
+        if "already exists" in str(e).lower():
+            print("Indexes already exist")
+        else:
+            print(f"Error creating indexes: {str(e)}")
+            raise
+
+
+def paper_exists(client, title: str) -> bool:
+    """Check if a paper with the given title already exists."""
+    response = client.scroll(
+        collection_name="ai_security_papers",
+        scroll_filter=models.Filter(
+            must=[
+                models.FieldCondition(
+                    key="title",
+                    match=models.MatchValue(value=title)
+                )
+            ]
+        ),
+        limit=1
+    )
+    return len(response[0]) > 0
 
 
 def import_csv_to_qdrant():
@@ -13,6 +73,9 @@ def import_csv_to_qdrant():
 
     # Ensure collection exists
     ensure_collection_exists(client)
+
+    # Ensure all necessary indexes exist
+    ensure_indexes_exist(client)
 
     try:
         # Read the entire CSV
@@ -54,7 +117,7 @@ def import_csv_to_qdrant():
 
             # Check if paper already exists in KB
             title = paper_dict.get('title', '')
-            if title and search_paper_by_title(client, title):
+            if title and paper_exists(client, title):
                 print(f"⏭️  Skipping existing paper: {title}")
                 continue
 
@@ -63,8 +126,6 @@ def import_csv_to_qdrant():
             if not success:
                 print(
                     f"❌ Failed to insert paper: {paper_dict.get('title', 'Unknown title')}")
-            else:
-                print(f"✅ Added to Qdrant: {title}")
 
         print(f"Processed {len(df)} records...")
 

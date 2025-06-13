@@ -254,8 +254,8 @@ def process_papers(raw_papers, source):
             title = paper.get("title", "")
             url = paper.get("id", "")
             abstract = paper.get("abstract", "") or ""
-            authors = ", ".join([a.get("author", {}).get(
-                "display_name", "") for a in paper.get("authorships", [])])
+            authors = [a.get("author", {}).get("display_name", "")
+                       for a in paper.get("authorships", [])]
             date = paper.get("publication_date", datetime.now(
                 timezone.utc).date().isoformat())
             is_early_access = paper.get("is_oa", False)
@@ -263,7 +263,8 @@ def process_papers(raw_papers, source):
             title = paper.title if hasattr(paper, 'title') else ""
             url = paper.link if hasattr(paper, 'link') else ""
             abstract = paper.summary if hasattr(paper, 'summary') else ""
-            authors = paper.author if hasattr(paper, 'author') else "Unknown"
+            authors = [author.strip() for author in paper.author.split(
+                ",")] if hasattr(paper, 'author') else ["Unknown"]
             date = datetime.now(timezone.utc).date().isoformat()
             is_early_access = False
 
