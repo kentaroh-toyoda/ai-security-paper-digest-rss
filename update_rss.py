@@ -16,11 +16,9 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 QDRANT_API_URL = os.getenv("QDRANT_API_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
-OPENALEX_EMAIL = os.getenv("OPENALEX_EMAIL")
 RSS_FEED_URL = os.getenv("RSS_FEED_URL")
 
 # Constants
-OPENALEX_URL = "https://api.openalex.org/works"
 ARXIV_FEEDS = [
     "https://export.arxiv.org/rss/cs.AI",
     "https://export.arxiv.org/rss/cs.LG",
@@ -34,60 +32,6 @@ total_tokens = 0
 # Initialize Qdrant client
 qdrant_client = init_qdrant_client()
 ensure_collection_exists(qdrant_client)
-
-
-def fetch_openalex_24h():
-    since = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
-    print(f"\n🔍 Fetching OpenAlex papers since: {since}")
-
-    all_results = []
-    page = 1
-    per_page = 100  # Maximum page size
-
-    while True:
-        url = f"{OPENALEX_URL}?filter=from_publication_date:{since}&per-page={per_page}&page={page}&mailto={OPENALEX_EMAIL}"
-        print(f"📄 Fetching page {page}...")
-        resp = requests.get(url)
-        data = resp.json()
-        results = data.get("results", [])
-
-        if not results:  # No more results
-            break
-
-        all_results.extend(results)
-        print(f"📚 Found {len(results)} papers on page {page}")
-
-        # Check if we've reached the last page
-        meta = data.get("meta", {})
-        if page >= meta.get("page_count", 1):
-            break
-
-        page += 1
-        time.sleep(1)  # Be nice to the API
-
-    # Filter papers based on their availability date
-    current_date = datetime.now(timezone.utc).date()
-    valid_results = []
-    for paper in all_results:
-        pub_date = paper.get("publication_date")
-        if pub_date:
-            try:
-                paper_date = datetime.strptime(pub_date, "%Y-%m-%d").date()
-                # Include papers that are either:
-                # 1. Published in the last 24 hours, or
-                # 2. In early access (future publication date) but available now
-                if paper_date <= current_date or paper.get("is_oa", False):
-                    valid_results.append(paper)
-                else:
-                    print(
-                        f"ℹ️ Skipping future paper (not yet available): {paper.get('title', 'Unknown')} (pub date: {pub_date})")
-            except ValueError:
-                print(
-                    f"⚠️ Skipping paper with invalid date format {pub_date}: {paper.get('title', 'Unknown')}")
-
-    print(
-        f"📊 Found {len(all_results)} total papers, {len(valid_results)} available for processing")
-    return valid_results
 
 
 def fetch_arxiv():
@@ -209,7 +153,6 @@ def process_paper(paper: dict) -> dict:
         "authors": paper.get("authors", ""),
         "source": paper.get("source", ""),
         "arxiv_id": paper.get("arxiv_id", ""),
-        "openalex_id": paper.get("openalex_id", ""),
         "cited_by_count": paper.get("cited_by_count", 0),
         "publication_type": paper.get("publication_type", ""),
         "code_repository": paper.get("code_repository", ""),
@@ -243,49 +186,23 @@ def process_paper(paper: dict) -> dict:
     return paper_data
 
 
-def process_papers(raw_papers, source):
+def process_papers(raw_papers):
     global total_tokens
     relevant = []
     current_date = datetime.now(timezone.utc).date()
 
     for paper in raw_papers:
-        # Extract info based on source
-        if source == "openalex":
-            title = paper.get("title", "")
-            url = paper.get("id", "")
-            abstract = paper.get("abstract", "") or ""
-            authors = [a.get("author", {}).get("display_name", "")
-                       for a in paper.get("authorships", [])]
-            date = paper.get("publication_date", datetime.now(
-                timezone.utc).date().isoformat())
-            is_early_access = paper.get("is_oa", False)
-        else:  # arxiv
-            title = paper.title if hasattr(paper, 'title') else ""
-            url = paper.link if hasattr(paper, 'link') else ""
-            abstract = paper.summary if hasattr(paper, 'summary') else ""
-            authors = [author.strip() for author in paper.author.split(
-                ",")] if hasattr(paper, 'author') else ["Unknown"]
-            date = datetime.now(timezone.utc).date().isoformat()
-            is_early_access = False
+        title = paper.title if hasattr(paper, 'title') else ""
+        url = paper.link if hasattr(paper, 'link') else ""
+        abstract = paper.summary if hasattr(paper, 'summary') else ""
+        authors = [author.strip() for author in paper.author.split(
+            ",")] if hasattr(paper, 'author') else ["Unknown"]
+        date = datetime.now(timezone.utc).date().isoformat()
 
         if not title or not url:
             continue
 
-        # Validate date
-        try:
-            paper_date = datetime.strptime(date, "%Y-%m-%d").date()
-            if paper_date > current_date and not is_early_access:
-                print(
-                    f"ℹ️ Skipping future paper (not yet available): {title} (pub date: {date})")
-                continue
-        except ValueError:
-            print(
-                f"⚠️ Skipping paper with invalid date format {date}: {title}")
-            continue
-
         print(f"\n📅 Processing paper published on: {date}")
-        if is_early_access:
-            print("📢 Note: This is an early access paper")
         print(f"📄 Title: {title}")
 
         if paper_exists(qdrant_client, url):
@@ -310,45 +227,43 @@ def process_papers(raw_papers, source):
             "url": url,
             "authors": authors,
             "date": date,
-            "source": source,
+            "source": "arxiv",
             "arxiv_id": url.split("/")[-1] if "arxiv.org" in url else "",
-            "openalex_id": paper.get("id", "") if source == "openalex" else "",
-            "cited_by_count": paper.get("cited_by_count", 0) if source == "openalex" else 0,
-            "publication_type": "preprint" if source == "arxiv" else paper.get("type", ""),
+            "cited_by_count": 0,
+            "publication_type": "preprint",
             "code_repository": ""
         }
 
         row = process_paper(paper_dict)
 
         # For arXiv papers, fetch full text and assess quality
-        if "arxiv.org" in url:
-            try:
-                arxiv_id = url.split("/")[-1]
-                html_url = f"https://arxiv.org/html/{arxiv_id}"
-                html_response = requests.get(html_url)
-                if html_response.status_code == 200:
-                    print(f"📄 Assessing quality for: {title}")
-                    # Create metadata dictionary for quality assessment
-                    metadata = {
-                        'title': title,
-                        'abstract': abstract,
-                        'date': date,
-                        'cited_by_count': 0,  # arXiv doesn't provide citation count
-                        'publication_type': 'preprint',
-                        'source': 'arXiv',
-                        'code_repository': ''  # Empty string instead of None
-                    }
-                    quality = assess_paper_quality(metadata, OPENAI_API_KEY)
-                    if quality:  # Only update if we got valid quality assessment
-                        # Convert "None" to empty string for code repository
-                        if "code_repository" in quality and quality["code_repository"] == "None":
-                            quality["code_repository"] = ""
-                        row.update(quality)
-                else:
-                    print(f"⚠️ Failed to retrieve HTML for: {title}")
-            except Exception as e:
-                print(f"❌ Error fetching full text: {e}")
-                print(f"Continuing without quality assessment for: {title}")
+        try:
+            arxiv_id = url.split("/")[-1]
+            html_url = f"https://arxiv.org/html/{arxiv_id}"
+            html_response = requests.get(html_url)
+            if html_response.status_code == 200:
+                print(f"📄 Assessing quality for: {title}")
+                # Create metadata dictionary for quality assessment
+                metadata = {
+                    'title': title,
+                    'abstract': abstract,
+                    'date': date,
+                    'cited_by_count': 0,
+                    'publication_type': 'preprint',
+                    'source': 'arXiv',
+                    'code_repository': ''
+                }
+                quality = assess_paper_quality(metadata, OPENAI_API_KEY)
+                if quality:  # Only update if we got valid quality assessment
+                    # Convert "None" to empty string for code repository
+                    if "code_repository" in quality and quality["code_repository"] == "None":
+                        quality["code_repository"] = ""
+                    row.update(quality)
+            else:
+                print(f"⚠️ Failed to retrieve HTML for: {title}")
+        except Exception as e:
+            print(f"❌ Error fetching full text: {e}")
+            print(f"Continuing without quality assessment for: {title}")
 
         # Ensure code repository is empty string if not present
         if "code_repository" not in row or row["code_repository"] == "None":
@@ -367,24 +282,15 @@ def estimate_cost(tokens):
 
 
 def main():
-    print("🔄 Fetching OpenAlex papers (past 24h)...")
-    openalex_papers = fetch_openalex_24h()
-    print(f"📚 Found {len(openalex_papers)} papers from OpenAlex")
-
     print("🔄 Fetching ArXiv RSS feeds...")
     arxiv_papers = fetch_arxiv()
     print(f"📚 Found {len(arxiv_papers)} papers from ArXiv")
 
-    print("🧠 Filtering OpenAlex papers...")
-    openalex_results = process_papers(openalex_papers, source="openalex")
-
     print("🧠 Filtering ArXiv papers...")
-    arxiv_results = process_papers(arxiv_papers, source="arxiv")
+    arxiv_results = process_papers(arxiv_papers)
 
-    all_results = openalex_results + arxiv_results
-
-    print(f"📝 Generating RSS feed with {len(all_results)} papers...")
-    build_rss_feed(all_results)
+    print(f"📝 Generating RSS feed with {len(arxiv_results)} papers...")
+    build_rss_feed(arxiv_results)
 
     cost = estimate_cost(total_tokens)
     print(
