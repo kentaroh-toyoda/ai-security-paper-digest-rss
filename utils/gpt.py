@@ -72,7 +72,7 @@ Respond with ONLY the search query, no explanations."""
         return topic
 
 
-def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "gpt-4.1", use_mini: bool = False) -> Tuple[Dict[str, Any], int]:
+def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "gpt-4.1") -> Tuple[Dict[str, Any], int]:
     """Assess if a paper is relevant and extract tags using GPT."""
     client = OpenAI(api_key=api_key)
 
@@ -147,7 +147,7 @@ Respond in JSON format:
 
     try:
         response = client.chat.completions.create(
-            model=DEFAULT_MINI_MODEL if use_mini else model,
+            model=model,
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": text}

@@ -7,7 +7,7 @@ import requests
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from feedgen.feed import FeedGenerator
-from utils.gpt import assess_relevance_and_tags, assess_paper_quality
+from utils.gpt import assess_relevance_and_tags
 from utils.qdrant import init_qdrant_client, ensure_collection_exists, paper_exists, insert_paper
 
 load_dotenv()
@@ -81,25 +81,6 @@ def build_rss_feed(relevant_papers):
             description.append("<h3>Paper Type</h3>")
             description.append("<ul>")
             description.append(f"<li>{paper['paper_type']}</li>")
-            description.append("</ul>")
-
-        # Quality Assessment
-        if any(key in paper for key in ["clarity", "novelty", "significance", "try_worthiness"]):
-            description.append("<h3>Quality Assessment</h3>")
-            description.append("<ul>")
-            if "clarity" in paper:
-                description.append(f"<li>Clarity: {paper['clarity']}/5</li>")
-            if "novelty" in paper:
-                description.append(f"<li>Novelty: {paper['novelty']}/5</li>")
-            if "significance" in paper:
-                description.append(
-                    f"<li>Significance: {paper['significance']}/5</li>")
-            if "try_worthiness" in paper:
-                description.append(
-                    f"<li>Try-worthiness: {'Yes' if paper['try_worthiness'] else 'No'}</li>")
-            if "justification" in paper:
-                description.append(
-                    f"<li>Justification: {paper['justification']}</li>")
             description.append("</ul>")
 
         # Additional Information
@@ -179,10 +160,6 @@ def process_paper(paper: dict) -> dict:
         paper_data["modalities"] = result.get("modalities", [])
         paper_data["summary"] = result.get("summary", [])
 
-        # Assess paper quality
-        quality = assess_paper_quality(paper_data, OPENAI_API_KEY)
-        paper_data.update(quality)
-
     return paper_data
 
 
@@ -211,7 +188,7 @@ def process_papers(raw_papers):
 
         fulltext = f"Title: {title}\nAbstract: {abstract}\nURL: {url}"
         result, token_count = assess_relevance_and_tags(
-            fulltext, OPENAI_API_KEY, temperature=0.1, model="gpt-4.1")
+            fulltext, OPENAI_API_KEY, temperature=0.1, model="gpt-4.1-mini")
         total_tokens += token_count
 
         if not result["relevant"]:
@@ -235,35 +212,6 @@ def process_papers(raw_papers):
         }
 
         row = process_paper(paper_dict)
-
-        # For arXiv papers, fetch full text and assess quality
-        try:
-            arxiv_id = url.split("/")[-1]
-            html_url = f"https://arxiv.org/html/{arxiv_id}"
-            html_response = requests.get(html_url)
-            if html_response.status_code == 200:
-                print(f"📄 Assessing quality for: {title}")
-                # Create metadata dictionary for quality assessment
-                metadata = {
-                    'title': title,
-                    'abstract': abstract,
-                    'date': date,
-                    'cited_by_count': 0,
-                    'publication_type': 'preprint',
-                    'source': 'arXiv',
-                    'code_repository': ''
-                }
-                quality = assess_paper_quality(metadata, OPENAI_API_KEY)
-                if quality:  # Only update if we got valid quality assessment
-                    # Convert "None" to empty string for code repository
-                    if "code_repository" in quality and quality["code_repository"] == "None":
-                        quality["code_repository"] = ""
-                    row.update(quality)
-            else:
-                print(f"⚠️ Failed to retrieve HTML for: {title}")
-        except Exception as e:
-            print(f"❌ Error fetching full text: {e}")
-            print(f"Continuing without quality assessment for: {title}")
 
         # Ensure code repository is empty string if not present
         if "code_repository" not in row or row["code_repository"] == "None":
