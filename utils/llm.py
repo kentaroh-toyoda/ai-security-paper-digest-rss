@@ -25,7 +25,55 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # Rate limiting configuration for free tier
 FREE_TIER_REQUESTS_PER_WINDOW = 20
 FREE_TIER_WINDOW_SECONDS = 60
+FREE_TIER_DAILY_LIMIT = 50  # Default daily limit for free tier
+FREE_TIER_DAILY_LIMIT_PAID = 1000  # Daily limit if you've purchased 10+ credits
 SAFETY_MARGIN = 0.1  # 10% safety margin
+
+
+class DailyRateLimiter:
+    """Rate limiter for daily API call limits."""
+
+    def __init__(self, daily_limit=FREE_TIER_DAILY_LIMIT):
+        self.daily_limit = daily_limit
+        self.request_dates = deque()
+        self.lock = threading.Lock()
+
+    def check_and_record(self):
+        """Check daily limit and record the request."""
+        with self.lock:
+            now = datetime.now()
+            today = now.date()
+
+            # Remove requests from previous days
+            while self.request_dates and self.request_dates[0].date() < today:
+                self.request_dates.popleft()
+
+            # Check if we're at the daily limit
+            if len(self.request_dates) >= self.daily_limit:
+                print(f"❌ Daily rate limit reached. Terminating process.")
+                print(
+                    f"💡 You've reached the daily limit ({self.daily_limit} requests/day).")
+                print(f"💡 Daily limit resets at midnight UTC.")
+                exit(1)
+
+            # Add current request
+            self.request_dates.append(now)
+
+    def get_status(self):
+        """Get current daily rate limit status."""
+        with self.lock:
+            now = datetime.now()
+            today = now.date()
+
+            # Remove old requests
+            while self.request_dates and self.request_dates[0].date() < today:
+                self.request_dates.popleft()
+
+            return {
+                "requests_today": len(self.request_dates),
+                "daily_limit": self.daily_limit,
+                "remaining_today": max(0, self.daily_limit - len(self.request_dates))
+            }
 
 
 class RateLimiter:
@@ -42,23 +90,26 @@ class RateLimiter:
         """Wait if necessary to respect rate limits."""
         with self.lock:
             now = time.time()
-            
+
             # Remove old requests outside the window
             while self.request_times and now - self.request_times[0] >= self.window_seconds:
                 self.request_times.popleft()
-            
+
             # Check if we're at the limit
             if len(self.request_times) >= self.requests_per_window:
                 # Calculate how long to wait
                 oldest_request = self.request_times[0]
-                wait_time = self.window_seconds - (now - oldest_request) + SAFETY_MARGIN
-                
+                wait_time = self.window_seconds - \
+                    (now - oldest_request) + SAFETY_MARGIN
+
                 if wait_time > 0:
                     print(f"❌ Rate limit reached. Terminating process.")
-                    print(f"💡 You've reached the OpenRouter free tier limit ({self.requests_per_window} requests/{self.window_seconds} seconds).")
-                    print(f"💡 Please wait {wait_time:.1f} seconds before trying again.")
+                    print(
+                        f"💡 You've reached the OpenRouter free tier limit ({self.requests_per_window} requests/{self.window_seconds} seconds).")
+                    print(
+                        f"💡 Please wait {wait_time:.1f} seconds before trying again.")
                     exit(1)
-            
+
             # Add current request
             self.request_times.append(now)
 
@@ -79,8 +130,9 @@ class RateLimiter:
             }
 
 
-# Global rate limiter instance
+# Global rate limiter instances
 _rate_limiter = RateLimiter()
+_daily_limiter = DailyRateLimiter()
 
 
 def get_rate_limiter():
@@ -88,12 +140,39 @@ def get_rate_limiter():
     return _rate_limiter
 
 
+def get_daily_limiter():
+    """Get the global daily rate limiter instance."""
+    return _daily_limiter
+
+
+def is_free_model(model_name):
+    """Check if a model is a free model variant."""
+    return model_name and model_name.endswith(':free')
+
+
+def update_daily_limit_for_paid_user():
+    """Update daily limit for users who have purchased 10+ credits."""
+    global _daily_limiter
+    _daily_limiter = DailyRateLimiter(FREE_TIER_DAILY_LIMIT_PAID)
+    print(
+        f"✅ Updated daily limit to {FREE_TIER_DAILY_LIMIT_PAID} requests/day (paid user)")
+
+
 def make_rate_limited_request(url, headers, payload, max_retries=3, retry_delay=1):
     """Make a rate-limited API request with automatic retries."""
     rate_limiter = get_rate_limiter()
+    daily_limiter = get_daily_limiter()
+
+    # Check if this is a free model request
+    model_name = payload.get("model", "")
+    is_free = is_free_model(model_name)
 
     for attempt in range(max_retries):
         try:
+            # Check daily limit for free models
+            if is_free:
+                daily_limiter.check_and_record()
+
             # Wait if necessary to respect rate limits
             rate_limiter.wait_if_needed()
 
@@ -105,9 +184,13 @@ def make_rate_limited_request(url, headers, payload, max_retries=3, retry_delay=
             if response.status_code == 429:
                 print(
                     f"❌ Rate limit hit on attempt {attempt + 1}. Terminating process.")
-                print(
-                    f"💡 You've reached the OpenRouter free tier limit (20 requests/minute).")
-                print(f"💡 Please wait a minute before trying again.")
+                if is_free:
+                    print(
+                        f"💡 You've reached the OpenRouter free tier limit (20 requests/minute).")
+                    print(f"💡 Please wait a minute before trying again.")
+                else:
+                    print(f"💡 You've reached the OpenRouter rate limit.")
+                    print(f"💡 Please wait before trying again.")
                 exit(1)
 
             # Handle other errors
@@ -137,22 +220,37 @@ def make_rate_limited_request(url, headers, payload, max_retries=3, retry_delay=
 def check_rate_limit_status():
     """Check and display current rate limit status."""
     rate_limiter = get_rate_limiter()
-    status = rate_limiter.get_status()
+    daily_limiter = get_daily_limiter()
+
+    minute_status = rate_limiter.get_status()
+    daily_status = daily_limiter.get_status()
 
     print(f"📊 Rate Limit Status:")
     print(
-        f"  Requests in current window: {status['requests_in_window']}/{status['max_requests']}")
+        f"  Minute Window: {minute_status['requests_in_window']}/{minute_status['max_requests']} requests")
     print(
-        f"  Time until window resets: {status['time_until_reset']:.2f} seconds")
+        f"  Time until minute window resets: {minute_status['time_until_reset']:.2f} seconds")
+    print(
+        f"  Daily Usage: {daily_status['requests_today']}/{daily_status['daily_limit']} requests")
+    print(f"  Remaining today: {daily_status['remaining_today']} requests")
 
-    if status['requests_in_window'] >= status['max_requests']:
-        print("  ⚠️ Rate limit window is full!")
-    elif status['requests_in_window'] >= status['max_requests'] * 0.8:
-        print("  ⚠️ Approaching rate limit!")
+    # Minute window analysis
+    if minute_status['requests_in_window'] >= minute_status['max_requests']:
+        print("  ⚠️ Minute rate limit window is full!")
+    elif minute_status['requests_in_window'] >= minute_status['max_requests'] * 0.8:
+        print("  ⚠️ Approaching minute rate limit!")
     else:
-        print("  ✅ Rate limit window has capacity")
+        print("  ✅ Minute rate limit window has capacity")
 
-    return status
+    # Daily limit analysis
+    if daily_status['requests_today'] >= daily_status['daily_limit']:
+        print("  ⚠️ Daily limit reached!")
+    elif daily_status['requests_today'] >= daily_status['daily_limit'] * 0.8:
+        print("  ⚠️ Approaching daily limit!")
+    else:
+        print("  ✅ Daily limit has capacity")
+
+    return minute_status, daily_status
 
 
 def get_llm_config():
@@ -530,3 +628,27 @@ def check_rate_limit(api_key: str) -> bool:
         else:
             print(f"❌ Error checking rate limit: {str(e)}")
             return False
+
+
+def check_and_update_daily_limit():
+    """Check current daily limit and provide option to update for paid users."""
+    daily_limiter = get_daily_limiter()
+    status = daily_limiter.get_status()
+
+    print(f"📊 Current Daily Limit: {status['daily_limit']} requests/day")
+    print(f"📊 Current Usage: {status['requests_today']} requests today")
+    print(f"📊 Remaining: {status['remaining_today']} requests today")
+
+    if status['daily_limit'] == FREE_TIER_DAILY_LIMIT:
+        print(f"\n💡 If you've purchased 10+ credits, you can increase your daily limit.")
+        print(
+            f"💡 Call update_daily_limit_for_paid_user() to set limit to {FREE_TIER_DAILY_LIMIT_PAID} requests/day")
+
+    return status
+
+
+def reset_daily_limiter():
+    """Reset the daily limiter (useful for testing)."""
+    global _daily_limiter
+    _daily_limiter = DailyRateLimiter()
+    print("✅ Daily limiter reset to default limits")

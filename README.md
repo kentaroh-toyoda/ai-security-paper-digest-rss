@@ -37,6 +37,8 @@ This tool includes comprehensive rate limiting for OpenRouter's free tier:
 
 - **Automatic Throttling**: All API calls are automatically rate-limited
 - **20 requests per minute**: Respects OpenRouter's free tier limits
+- **Daily Limits**: 50 requests/day (free users) or 1000 requests/day (paid users)
+- **Free Model Detection**: Automatically detects `:free` model variants
 - **Process Termination**: Exits with error when rate limits are reached
 - **Status Monitoring**: Check your current rate limit status
 
@@ -103,10 +105,12 @@ Shows your current rate limit usage without making API calls.
 
 The rate limiting system includes:
 
-- **RateLimiter Class**: Tracks API calls in a sliding window
+- **RateLimiter Class**: Tracks API calls in a sliding window (minute-based)
+- **DailyRateLimiter Class**: Tracks daily API call limits
+- **Free Model Detection**: Automatically detects `:free` model variants
 - **Process Termination**: Exits with error when limits are reached
 - **Exponential Backoff**: Retries with increasing delays on other failures
-- **Status Monitoring**: Real-time rate limit status
+- **Status Monitoring**: Real-time rate limit status for both minute and daily limits
 - **Thread Safety**: Safe for concurrent operations
 
 ### Configuration
@@ -114,6 +118,8 @@ The rate limiting system includes:
 Rate limiting is configured for OpenRouter's free tier:
 
 - 20 requests per 60-second window
+- 50 requests per day (free users)
+- 1000 requests per day (paid users with 10+ credits)
 - 10% safety margin
 - Automatic retry with exponential backoff
 
