@@ -36,7 +36,7 @@ TEMPERATURE=0.1              # Optional: specify the temperature (0.0 to 1.0)
 This tool includes comprehensive rate limiting for OpenRouter's free tier:
 
 - **Automatic Throttling**: All API calls are automatically rate-limited
-- **10 requests per 10 seconds**: Respects OpenRouter's free tier limits
+- **20 requests per minute**: Respects OpenRouter's free tier limits
 - **Smart Waiting**: Automatically waits when rate limits are reached
 - **Status Monitoring**: Check your current rate limit status
 
@@ -113,7 +113,7 @@ The rate limiting system includes:
 
 Rate limiting is configured for OpenRouter's free tier:
 
-- 10 requests per 10-second window
+- 20 requests per 60-second window
 - 10% safety margin
 - Automatic retry with exponential backoff
 

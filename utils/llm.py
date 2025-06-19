@@ -23,8 +23,8 @@ DEFAULT_TEMPERATURE = 0.1
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # Rate limiting configuration for free tier
-FREE_TIER_REQUESTS_PER_WINDOW = 10
-FREE_TIER_WINDOW_SECONDS = 10
+FREE_TIER_REQUESTS_PER_WINDOW = 20
+FREE_TIER_WINDOW_SECONDS = 60
 SAFETY_MARGIN = 0.1  # 10% safety margin
 
 
