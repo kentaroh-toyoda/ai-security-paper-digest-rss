@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from utils.qdrant import init_qdrant_client, ensure_collection_exists, paper_exists, insert_paper, get_all_papers
-from utils.gpt import assess_relevance_and_tags, assess_paper_quality
+from utils.llm import assess_relevance_and_tags, assess_paper_quality
 from collections import defaultdict
 import requests
 from urllib.parse import quote
@@ -250,7 +250,7 @@ def process_paper(paper: dict) -> dict:
 
 def generate_related_keywords(query: str, api_key: str) -> list:
     """Generate related keywords for a search query."""
-    from utils.gpt import generate_search_keywords
+    from utils.llm import generate_search_keywords
 
     # Generate optimized search keywords
     optimized_query = generate_search_keywords(query, api_key)

@@ -7,7 +7,7 @@ import requests
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from feedgen.feed import FeedGenerator
-from utils.gpt import assess_relevance_and_tags
+from utils.llm import assess_relevance_and_tags, check_rate_limit
 from utils.qdrant import init_qdrant_client, ensure_collection_exists, paper_exists, insert_paper
 
 load_dotenv()
@@ -171,6 +171,12 @@ def process_papers(raw_papers):
     global total_tokens
     relevant = []
     current_date = datetime.now(timezone.utc).date()
+
+    # Check rate limit before starting
+    if check_rate_limit(OPENROUTER_API_KEY):
+        print("⚠️ Rate limit detected. Consider waiting or using a different model.")
+        # You can choose to continue or exit here
+        # return relevant  # Uncomment to exit early
 
     for paper in raw_papers:
         title = paper.title if hasattr(paper, 'title') else ""

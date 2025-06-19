@@ -1,4 +1,4 @@
-# utils/gpt.py
+# utils/llm.py
 
 import os
 import json
@@ -20,8 +20,8 @@ DEFAULT_TEMPERATURE = 0.1
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
-def get_gpt_config():
-    """Get GPT configuration from environment variables with defaults."""
+def get_llm_config():
+    """Get LLM configuration from environment variables with defaults."""
     return {
         "model": os.getenv("AI_MODEL", DEFAULT_MODEL),
         "temperature": float(os.getenv("TEMPERATURE", DEFAULT_TEMPERATURE))
@@ -238,7 +238,7 @@ def assess_paper_quality(metadata: dict, api_key: str, return_usage=False):
         dict: Quality assessment results
     """
     headers = create_openrouter_client(api_key)
-    config = get_gpt_config()
+    config = get_llm_config()
 
     # Calculate paper age in months
     pub_date = datetime.strptime(metadata['date'], "%Y-%m-%d")
@@ -359,3 +359,45 @@ Please assess the paper and output JSON:
         if return_usage:
             return {"error": str(e)}, 0
         return {"error": str(e)}
+
+
+def check_rate_limit(api_key: str) -> bool:
+    """Check if we're currently rate limited by making a simple API call.
+
+    Args:
+        api_key: OpenRouter API key
+
+    Returns:
+        bool: True if rate limited (429 error), False otherwise
+    """
+    headers = create_openrouter_client(api_key)
+
+    # Make a minimal API call to check rate limit
+    payload = {
+        "model": "openai/gpt-4o-mini",
+        "messages": [
+            {"role": "user", "content": "test"}
+        ],
+        "max_tokens": 1
+    }
+
+    try:
+        response = requests.post(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers=headers,
+            json=payload
+        )
+
+        if response.status_code == 429:
+            print("⚠️ Rate limit detected - API is currently rate limited")
+            return True
+        elif response.status_code == 200:
+            print("✅ Rate limit check passed - API is available")
+            return False
+        else:
+            print(f"⚠️ Unexpected status code: {response.status_code}")
+            return False
+
+    except Exception as e:
+        print(f"❌ Error checking rate limit: {str(e)}")
+        return False
