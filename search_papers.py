@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import argparse
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from utils.qdrant import init_qdrant_client, ensure_collection_exists, paper_exists, insert_paper, get_all_papers
@@ -276,17 +277,40 @@ def generate_related_keywords(query: str, api_key: str) -> list:
 
 
 def main():
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(
+        description='Search for AI security papers from OpenAlex')
+    parser.add_argument('--topic', type=str, default=None,
+                        help='Search topic (default: "LLM red teaming")')
+    parser.add_argument('--start-date', type=str, default=None,
+                        help='Start date in YYYY-MM-DD format (default: "2022-01-01")')
+    parser.add_argument('--max-pages', type=int, default=10,
+                        help='Maximum pages to fetch from OpenAlex (default: 10)')
+    parser.add_argument('--non-interactive', action='store_true',
+                        help='Run in non-interactive mode (for CI/CD)')
+
+    args = parser.parse_args()
+
     # Check rate limit status before starting
     print("\n📊 Checking rate limit status...")
     check_rate_limit_status()
 
-    # Get search query from user with default value
-    default_query = "LLM red teaming"
-    query = input(
-        f"Enter your search topic (default: '{default_query}'): ").strip()
-    if not query:
-        query = default_query
-        print(f"Using default topic: {query}")
+    # Get search query
+    if args.topic:
+        query = args.topic
+        print(f"Using topic from command line: {query}")
+    else:
+        # Get search query from user with default value
+        default_query = "LLM red teaming"
+        if args.non_interactive:
+            query = default_query
+            print(f"Using default topic in non-interactive mode: {query}")
+        else:
+            query = input(
+                f"Enter your search topic (default: '{default_query}'): ").strip()
+            if not query:
+                query = default_query
+                print(f"Using default topic: {query}")
 
     # Generate related keywords
     print("\n🔍 Generating related keywords...")
@@ -298,12 +322,21 @@ def main():
         related_keywords = []
 
     # Get date range for search
-    default_start_date = "2022-01-01"
-    start_date = input(
-        f"\nEnter start date (YYYY-MM-DD) or press Enter for {default_start_date}: ").strip()
-    if not start_date:
-        start_date = default_start_date
-        print(f"Using default start date: {start_date}")
+    if args.start_date:
+        start_date = args.start_date
+        print(f"Using start date from command line: {start_date}")
+    else:
+        default_start_date = "2022-01-01"
+        if args.non_interactive:
+            start_date = default_start_date
+            print(
+                f"Using default start date in non-interactive mode: {start_date}")
+        else:
+            start_date = input(
+                f"\nEnter start date (YYYY-MM-DD) or press Enter for {default_start_date}: ").strip()
+            if not start_date:
+                start_date = default_start_date
+                print(f"Using default start date: {start_date}")
 
     # Fetch papers from OpenAlex for main query and related keywords
     all_papers = []
@@ -311,7 +344,7 @@ def main():
 
     for search_query in search_queries:
         print(f"\n🔍 Searching for: {search_query}")
-        papers = fetch_from_openalex(search_query, start_date)
+        papers = fetch_from_openalex(search_query, start_date, args.max_pages)
         if papers:
             all_papers.extend(papers)
             print(f"Found {len(papers)} papers for '{search_query}'")

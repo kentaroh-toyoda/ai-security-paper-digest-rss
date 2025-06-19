@@ -51,20 +51,31 @@ jobs:
 
       - name: Check OpenRouter API key
         run: |
+          echo "Checking OpenRouter API key..."
           if [ -z "$OPENROUTER_API_KEY" ]; then
             echo "::error::OPENROUTER_API_KEY is not set. Please set it in repository secrets."
             exit 1
           fi
+          echo "API key is set (length: ${#OPENROUTER_API_KEY})"
+          echo "API key starts with: ${OPENROUTER_API_KEY:0:8}..."
+
           # Test the API key
+          echo "Testing API key with OpenRouter..."
           response=$(curl -s -H "Authorization: Bearer $OPENROUTER_API_KEY" https://openrouter.ai/api/v1/models)
+          echo "Response status: $?"
+          echo "Response preview: ${response:0:200}..."
+
           if echo "$response" | grep -q "error"; then
             echo "::error::OpenRouter API key is not valid. Please check your API key."
+            echo "Full response: $response"
             exit 1
           fi
+          echo "✅ OpenRouter API key is valid"
 
       - name: Run OpenAlex topic fetch
         run: |
           python search_papers.py \
             --topic "${{ github.event.inputs.topic }}" \
             --start-date "${{ github.event.inputs.start_date }}" \
-            --max-pages "${{ github.event.inputs.max_pages }}"
+            --max-pages "${{ github.event.inputs.max_pages }}" \
+            --non-interactive
