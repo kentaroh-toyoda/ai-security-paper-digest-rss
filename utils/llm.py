@@ -42,25 +42,23 @@ class RateLimiter:
         """Wait if necessary to respect rate limits."""
         with self.lock:
             now = time.time()
-
+            
             # Remove old requests outside the window
             while self.request_times and now - self.request_times[0] >= self.window_seconds:
                 self.request_times.popleft()
-
+            
             # Check if we're at the limit
             if len(self.request_times) >= self.requests_per_window:
                 # Calculate how long to wait
                 oldest_request = self.request_times[0]
-                wait_time = self.window_seconds - \
-                    (now - oldest_request) + SAFETY_MARGIN
-
+                wait_time = self.window_seconds - (now - oldest_request) + SAFETY_MARGIN
+                
                 if wait_time > 0:
-                    print(
-                        f"⏳ Rate limit reached. Waiting {wait_time:.2f} seconds...")
-                    time.sleep(wait_time)
-                    # Recursive call to check again after waiting
-                    return self.wait_if_needed()
-
+                    print(f"❌ Rate limit reached. Terminating process.")
+                    print(f"💡 You've reached the OpenRouter free tier limit ({self.requests_per_window} requests/{self.window_seconds} seconds).")
+                    print(f"💡 Please wait {wait_time:.1f} seconds before trying again.")
+                    exit(1)
+            
             # Add current request
             self.request_times.append(now)
 
@@ -103,13 +101,14 @@ def make_rate_limited_request(url, headers, payload, max_retries=3, retry_delay=
             response = requests.post(
                 url, headers=headers, json=payload, timeout=30)
 
-            # Handle rate limit errors
+            # Handle rate limit errors - terminate process
             if response.status_code == 429:
                 print(
-                    f"⚠️ Rate limit hit on attempt {attempt + 1}. Retrying in {retry_delay} seconds...")
-                time.sleep(retry_delay)
-                retry_delay *= 2  # Exponential backoff
-                continue
+                    f"❌ Rate limit hit on attempt {attempt + 1}. Terminating process.")
+                print(
+                    f"💡 You've reached the OpenRouter free tier limit (20 requests/minute).")
+                print(f"💡 Please wait a minute before trying again.")
+                exit(1)
 
             # Handle other errors
             if response.status_code != 200:

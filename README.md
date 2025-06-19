@@ -37,7 +37,7 @@ This tool includes comprehensive rate limiting for OpenRouter's free tier:
 
 - **Automatic Throttling**: All API calls are automatically rate-limited
 - **20 requests per minute**: Respects OpenRouter's free tier limits
-- **Smart Waiting**: Automatically waits when rate limits are reached
+- **Process Termination**: Exits with error when rate limits are reached
 - **Status Monitoring**: Check your current rate limit status
 
 ### Rate Limiting Utilities
@@ -104,8 +104,8 @@ Shows your current rate limit usage without making API calls.
 The rate limiting system includes:
 
 - **RateLimiter Class**: Tracks API calls in a sliding window
-- **Automatic Waiting**: Pauses execution when limits are reached
-- **Exponential Backoff**: Retries with increasing delays on failures
+- **Process Termination**: Exits with error when limits are reached
+- **Exponential Backoff**: Retries with increasing delays on other failures
 - **Status Monitoring**: Real-time rate limit status
 - **Thread Safety**: Safe for concurrent operations
 
