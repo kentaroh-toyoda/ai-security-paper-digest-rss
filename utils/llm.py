@@ -363,32 +363,45 @@ def clean_and_extract_json(response_text: str) -> dict:
     if json_match:
         try:
             json_str = json_match.group(0)
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            pass
+            result = json.loads(json_str)
+            return result
+        except json.JSONDecodeError as e:
+            print(f"❌ Failed to parse extracted JSON: {json_str}")
+            print(f"❌ JSON parsing error: {e}")
+            print(f"❌ Original response: {response_text[:500]}...")
+            exit(1)
 
     # Try a more aggressive JSON extraction
     json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
     if json_match:
         try:
             json_str = json_match.group(0)
-            return json.loads(json_str)
-        except json.JSONDecodeError:
-            pass
+            result = json.loads(json_str)
+            return result
+        except json.JSONDecodeError as e:
+            print(f"❌ Failed to parse extracted JSON: {json_str}")
+            print(f"❌ JSON parsing error: {e}")
+            print(f"❌ Original response: {response_text[:500]}...")
+            exit(1)
 
     # Fallback: try to evaluate as Python dict (less safe but sometimes works)
     try:
         # Remove any remaining non-JSON text
         json_only = re.sub(r'^[^{]*', '', cleaned)
         json_only = re.sub(r'[^}]*$', '', json_only)
-        return eval(json_only)
-    except Exception:
-        pass
+        result = eval(json_only)
+        return result
+    except Exception as e:
+        print(f"❌ Failed to parse extracted JSON: {json_only}")
+        print(f"❌ Evaluation error: {e}")
+        print(f"❌ Original response: {response_text[:500]}...")
+        exit(1)
 
-    # If all else fails, return a default response
+    # If all else fails, exit with error
     print(
-        f"❌ Could not extract valid JSON from response: {response_text[:200]}...")
-    return {"relevant": False, "error": "Failed to parse response"}
+        f"❌ Could not extract valid JSON from response: {response_text[:500]}...")
+    print(f"❌ Cleaned response: {cleaned[:500]}...")
+    exit(1)
 
 
 def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4o") -> Tuple[Dict[str, Any], int]:
