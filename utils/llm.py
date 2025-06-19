@@ -326,6 +326,71 @@ Respond with ONLY the search query, no explanations."""
         return topic
 
 
+def clean_and_extract_json(response_text: str) -> dict:
+    """Clean response text and extract JSON, handling thinking tokens and other formatting."""
+
+    # Remove thinking tokens and other common formatting
+    cleaned = response_text
+
+    # Remove thinking tokens (◁think▷ and ◁/think▷)
+    cleaned = re.sub(r'◁think▷.*?◁/think▷', '', cleaned, flags=re.DOTALL)
+
+    # Remove other common thinking/reasoning tokens
+    thinking_patterns = [
+        r'<think>.*?</think>',
+        r'<reasoning>.*?</reasoning>',
+        r'<analysis>.*?</analysis>',
+        r'<thought>.*?</thought>',
+        r'<step>.*?</step>',
+        r'<process>.*?</process>'
+    ]
+
+    for pattern in thinking_patterns:
+        cleaned = re.sub(pattern, '', cleaned, flags=re.DOTALL)
+
+    # Remove leading/trailing whitespace and newlines
+    cleaned = cleaned.strip()
+
+    # Try to parse as JSON first
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    # Look for JSON object in the cleaned text
+    json_match = re.search(
+        r'\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}', cleaned, re.DOTALL)
+    if json_match:
+        try:
+            json_str = json_match.group(0)
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass
+
+    # Try a more aggressive JSON extraction
+    json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
+    if json_match:
+        try:
+            json_str = json_match.group(0)
+            return json.loads(json_str)
+        except json.JSONDecodeError:
+            pass
+
+    # Fallback: try to evaluate as Python dict (less safe but sometimes works)
+    try:
+        # Remove any remaining non-JSON text
+        json_only = re.sub(r'^[^{]*', '', cleaned)
+        json_only = re.sub(r'[^}]*$', '', json_only)
+        return eval(json_only)
+    except Exception:
+        pass
+
+    # If all else fails, return a default response
+    print(
+        f"❌ Could not extract valid JSON from response: {response_text[:200]}...")
+    return {"relevant": False, "error": "Failed to parse response"}
+
+
 def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4o") -> Tuple[Dict[str, Any], int]:
     """Assess if a paper is relevant and extract tags using OpenRouter."""
     headers = create_openrouter_client(api_key)
@@ -418,32 +483,9 @@ Respond in JSON format:
         result = result_data["choices"][0]["message"]["content"]
         token_count = result_data["usage"]["total_tokens"]
 
-        # Parse the response as JSON
-        try:
-            result_dict = json.loads(result)
-            return result_dict, token_count
-        except json.JSONDecodeError:
-            # Try to extract JSON from the response if it contains thinking/reasoning
-            print(f"❌ Failed to parse OpenRouter response as JSON: {result}")
-
-            # Look for JSON in the response
-            json_match = re.search(r'\{.*\}', result, re.DOTALL)
-            if json_match:
-                try:
-                    json_str = json_match.group(0)
-                    result_dict = json.loads(json_str)
-                    print(f"✅ Successfully extracted JSON from response")
-                    return result_dict, token_count
-                except json.JSONDecodeError:
-                    print(f"❌ Failed to parse extracted JSON: {json_str}")
-
-            # Fallback to eval if JSON parsing fails
-            try:
-                result_dict = eval(result)
-                return result_dict, token_count
-            except Exception as e:
-                print(f"❌ Error parsing OpenRouter output: {e}")
-                return {"relevant": False}, token_count
+        # Use the improved JSON extraction function
+        result_dict = clean_and_extract_json(result)
+        return result_dict, token_count
 
     except Exception as e:
         print(f"❌ Error calling OpenRouter API: {str(e)}")
@@ -537,48 +579,8 @@ Please assess the paper and output JSON:
         print(f"\nOpenRouter Quality Assessment for {metadata['title']}:")
         print(content)
 
-        try:
-            # Try to parse as JSON first
-            parsed = json.loads(content)
-        except json.JSONDecodeError:
-            # Try to extract JSON from the response if it contains thinking/reasoning
-            json_match = re.search(r'\{.*\}', content, re.DOTALL)
-            if json_match:
-                try:
-                    json_str = json_match.group(0)
-                    parsed = json.loads(json_str)
-                    print(
-                        f"✅ Successfully extracted JSON from quality assessment response")
-                except json.JSONDecodeError:
-                    print(
-                        f"❌ Failed to parse extracted JSON from quality assessment: {json_str}")
-                    # Fallback to eval if JSON parsing fails
-                    try:
-                        parsed = eval(content)
-                    except Exception as e:
-                        print(f"❌ Error parsing OpenRouter output: {e}")
-                        parsed = {
-                            "Clarity": 0,
-                            "Novelty": 0,
-                            "Significance": 0,
-                            "Try-worthiness": False,
-                            "Justification": "Error parsing OpenRouter output",
-                            "Code repository": None
-                        }
-            else:
-                # Fallback to eval if JSON parsing fails
-                try:
-                    parsed = eval(content)
-                except Exception as e:
-                    print(f"❌ Error parsing OpenRouter output: {e}")
-                    parsed = {
-                        "Clarity": 0,
-                        "Novelty": 0,
-                        "Significance": 0,
-                        "Try-worthiness": False,
-                        "Justification": "Error parsing OpenRouter output",
-                        "Code repository": None
-                    }
+        # Use the improved JSON extraction function
+        parsed = clean_and_extract_json(content)
 
         if return_usage:
             return parsed, result_data["usage"]["total_tokens"]
