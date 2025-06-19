@@ -6,6 +6,7 @@ import requests
 from dotenv import load_dotenv
 from typing import Tuple, Dict, Any
 from datetime import datetime
+import re
 
 # Load environment variables
 load_dotenv()
@@ -191,8 +192,27 @@ Respond in JSON format:
             result_dict = json.loads(result)
             return result_dict, token_count
         except json.JSONDecodeError:
+            # Try to extract JSON from the response if it contains thinking/reasoning
             print(f"❌ Failed to parse OpenRouter response as JSON: {result}")
-            return {"relevant": False}, token_count
+
+            # Look for JSON in the response
+            json_match = re.search(r'\{.*\}', result, re.DOTALL)
+            if json_match:
+                try:
+                    json_str = json_match.group(0)
+                    result_dict = json.loads(json_str)
+                    print(f"✅ Successfully extracted JSON from response")
+                    return result_dict, token_count
+                except json.JSONDecodeError:
+                    print(f"❌ Failed to parse extracted JSON: {json_str}")
+
+            # Fallback to eval if JSON parsing fails
+            try:
+                result_dict = eval(result)
+                return result_dict, token_count
+            except Exception as e:
+                print(f"❌ Error parsing OpenRouter output: {e}")
+                return {"relevant": False}, token_count
 
     except Exception as e:
         print(f"❌ Error calling OpenRouter API: {str(e)}")
@@ -291,19 +311,44 @@ Please assess the paper and output JSON:
             # Try to parse as JSON first
             parsed = json.loads(content)
         except json.JSONDecodeError:
-            try:
+            # Try to extract JSON from the response if it contains thinking/reasoning
+            json_match = re.search(r'\{.*\}', content, re.DOTALL)
+            if json_match:
+                try:
+                    json_str = json_match.group(0)
+                    parsed = json.loads(json_str)
+                    print(
+                        f"✅ Successfully extracted JSON from quality assessment response")
+                except json.JSONDecodeError:
+                    print(
+                        f"❌ Failed to parse extracted JSON from quality assessment: {json_str}")
+                    # Fallback to eval if JSON parsing fails
+                    try:
+                        parsed = eval(content)
+                    except Exception as e:
+                        print(f"❌ Error parsing OpenRouter output: {e}")
+                        parsed = {
+                            "Clarity": 0,
+                            "Novelty": 0,
+                            "Significance": 0,
+                            "Try-worthiness": False,
+                            "Justification": "Error parsing OpenRouter output",
+                            "Code repository": None
+                        }
+            else:
                 # Fallback to eval if JSON parsing fails
-                parsed = eval(content)
-            except Exception as e:
-                print(f"❌ Error parsing OpenRouter output: {e}")
-                parsed = {
-                    "Clarity": 0,
-                    "Novelty": 0,
-                    "Significance": 0,
-                    "Try-worthiness": False,
-                    "Justification": "Error parsing OpenRouter output",
-                    "Code repository": None
-                }
+                try:
+                    parsed = eval(content)
+                except Exception as e:
+                    print(f"❌ Error parsing OpenRouter output: {e}")
+                    parsed = {
+                        "Clarity": 0,
+                        "Novelty": 0,
+                        "Significance": 0,
+                        "Try-worthiness": False,
+                        "Justification": "Error parsing OpenRouter output",
+                        "Code repository": None
+                    }
 
         if return_usage:
             return parsed, result_data["usage"]["total_tokens"]
