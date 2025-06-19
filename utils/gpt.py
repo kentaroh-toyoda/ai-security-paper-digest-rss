@@ -2,8 +2,7 @@
 
 import os
 import json
-import openai
-from openai import OpenAI
+import requests
 from dotenv import load_dotenv
 from typing import Tuple, Dict, Any
 from datetime import datetime
@@ -12,30 +11,44 @@ from datetime import datetime
 load_dotenv()
 
 # Default configuration
-DEFAULT_MODEL = "gpt-4.1"
-DEFAULT_MINI_MODEL = "gpt-4.1-mini"
+DEFAULT_MODEL = "openai/gpt-4o"
+DEFAULT_MINI_MODEL = "openai/gpt-4o-mini"
 DEFAULT_TEMPERATURE = 0.1
+
+# OpenRouter configuration
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 
 def get_gpt_config():
     """Get GPT configuration from environment variables with defaults."""
     return {
-        "model": os.getenv("GPT_MODEL", DEFAULT_MODEL),
-        "temperature": float(os.getenv("GPT_TEMPERATURE", DEFAULT_TEMPERATURE))
+        "model": os.getenv("AI_MODEL", DEFAULT_MODEL),
+        "temperature": float(os.getenv("TEMPERATURE", DEFAULT_TEMPERATURE))
     }
 
 
+def create_openrouter_client(api_key: str):
+    """Create an OpenRouter client using requests."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://paper-digest.com",  # Replace with your domain
+        "X-Title": "Paper Digest"  # Replace with your app name
+    }
+    return headers
+
+
 def generate_search_keywords(topic: str, api_key: str) -> str:
-    """Generate optimized search keywords using GPT.
+    """Generate optimized search keywords using OpenRouter.
 
     Args:
         topic: The topic to generate search keywords for
-        api_key: OpenAI API key
+        api_key: OpenRouter API key
 
     Returns:
         str: Optimized search query string
     """
-    client = OpenAI(api_key=api_key)
+    headers = create_openrouter_client(api_key)
 
     system_prompt = """You are an expert in academic paper search. Your task is to generate optimized search keywords for finding relevant papers in OpenAlex.
 
@@ -57,24 +70,32 @@ Example output: "large language model" AND ("red teaming" OR "jailbreaking" OR "
 
 Respond with ONLY the search query, no explanations."""
 
+    payload = {
+        "model": DEFAULT_MINI_MODEL,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": topic}
+        ],
+        "temperature": DEFAULT_TEMPERATURE
+    }
+
     try:
-        response = client.chat.completions.create(
-            model=DEFAULT_MINI_MODEL,  # Using mini model for this simpler task
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": topic}
-            ],
-            temperature=DEFAULT_TEMPERATURE
+        response = requests.post(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers=headers,
+            json=payload
         )
-        return response.choices[0].message.content.strip()
+        response.raise_for_status()
+        result = response.json()
+        return result["choices"][0]["message"]["content"].strip()
     except Exception as e:
         print(f"❌ Error generating search keywords: {str(e)}")
         return topic
 
 
-def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "gpt-4.1") -> Tuple[Dict[str, Any], int]:
-    """Assess if a paper is relevant and extract tags using GPT."""
-    client = OpenAI(api_key=api_key)
+def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4o") -> Tuple[Dict[str, Any], int]:
+    """Assess if a paper is relevant and extract tags using OpenRouter."""
+    headers = create_openrouter_client(api_key)
 
     system_prompt = """You are an expert in AI security and safety. Your task is to assess if a paper is relevant to AI security, safety, or red teaming, and extract relevant tags.
 
@@ -145,28 +166,36 @@ Respond in JSON format:
     "modalities": ["text", "image", "video", "audio", "multimodal", "other"]
 }"""
 
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": text}
+        ],
+        "temperature": temperature
+    }
+
     try:
-        response = client.chat.completions.create(
-            model=model,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": text}
-            ],
-            temperature=temperature
+        response = requests.post(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers=headers,
+            json=payload
         )
-        result = response.choices[0].message.content
-        token_count = response.usage.total_tokens
+        response.raise_for_status()
+        result_data = response.json()
+        result = result_data["choices"][0]["message"]["content"]
+        token_count = result_data["usage"]["total_tokens"]
 
         # Parse the response as JSON
         try:
             result_dict = json.loads(result)
             return result_dict, token_count
         except json.JSONDecodeError:
-            print(f"❌ Failed to parse GPT response as JSON: {result}")
+            print(f"❌ Failed to parse OpenRouter response as JSON: {result}")
             return {"relevant": False}, token_count
 
     except Exception as e:
-        print(f"❌ Error calling GPT API: {str(e)}")
+        print(f"❌ Error calling OpenRouter API: {str(e)}")
         return {"relevant": False}, 0
 
 
@@ -182,13 +211,13 @@ def assess_paper_quality(metadata: dict, api_key: str, return_usage=False):
             - source: Publication source/venue
             - code_repository: URL to code repository if available
             - date: Publication date (YYYY-MM-DD)
-        api_key: OpenAI API key
+        api_key: OpenRouter API key
         return_usage: Whether to return token usage information
 
     Returns:
         dict: Quality assessment results
     """
-    client = OpenAI(api_key=api_key)
+    headers = create_openrouter_client(api_key)
     config = get_gpt_config()
 
     # Calculate paper age in months
@@ -235,38 +264,53 @@ Please assess the paper and output JSON:
   "code_repository": "GitHub URL or similar, if found"
 }}"""
 
-    response = client.chat.completions.create(
-        model=config["model"],  # Keep using full model for quality assessment
-        temperature=config["temperature"],
-        messages=[
+    payload = {
+        "model": config["model"],
+        "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
-        ]
-    )
-    content = response.choices[0].message.content
-
-    # Print the raw response for debugging
-    print(f"\nGPT Quality Assessment for {metadata['title']}:")
-    print(content)
+        ],
+        "temperature": config["temperature"]
+    }
 
     try:
-        # Try to parse as JSON first
-        parsed = json.loads(content)
-    except json.JSONDecodeError:
-        try:
-            # Fallback to eval if JSON parsing fails
-            parsed = eval(content)
-        except Exception as e:
-            print(f"❌ Error parsing GPT output: {e}")
-            parsed = {
-                "Clarity": 0,
-                "Novelty": 0,
-                "Significance": 0,
-                "Try-worthiness": False,
-                "Justification": "Error parsing GPT output",
-                "Code repository": None
-            }
+        response = requests.post(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers=headers,
+            json=payload
+        )
+        response.raise_for_status()
+        result_data = response.json()
+        content = result_data["choices"][0]["message"]["content"]
 
-    if return_usage:
-        return parsed, response.usage.total_tokens
-    return parsed
+        # Print the raw response for debugging
+        print(f"\nOpenRouter Quality Assessment for {metadata['title']}:")
+        print(content)
+
+        try:
+            # Try to parse as JSON first
+            parsed = json.loads(content)
+        except json.JSONDecodeError:
+            try:
+                # Fallback to eval if JSON parsing fails
+                parsed = eval(content)
+            except Exception as e:
+                print(f"❌ Error parsing OpenRouter output: {e}")
+                parsed = {
+                    "Clarity": 0,
+                    "Novelty": 0,
+                    "Significance": 0,
+                    "Try-worthiness": False,
+                    "Justification": "Error parsing OpenRouter output",
+                    "Code repository": None
+                }
+
+        if return_usage:
+            return parsed, result_data["usage"]["total_tokens"]
+        return parsed
+
+    except Exception as e:
+        print(f"❌ Error calling OpenRouter API: {str(e)}")
+        if return_usage:
+            return {"error": str(e)}, 0
+        return {"error": str(e)}

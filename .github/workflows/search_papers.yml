@@ -18,7 +18,7 @@ on:
       gpt_model:
         description: "GPT model to use"
         required: false
-        default: "gpt-4.1"
+        default: "openai/gpt-4o-mini"
       gpt_temperature:
         description: "GPT temperature (0.0 to 1.0)"
         required: false
@@ -28,12 +28,12 @@ jobs:
   run:
     runs-on: ubuntu-latest
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       OPENALEX_EMAIL: ${{ secrets.OPENALEX_EMAIL }}
       BASEROW_API_TOKEN: ${{ secrets.BASEROW_API_TOKEN }}
       BASEROW_TABLE_ID: ${{ secrets.BASEROW_TABLE_ID }}
-      GPT_MODEL: ${{ github.event.inputs.gpt_model }}
-      GPT_TEMPERATURE: ${{ github.event.inputs.gpt_temperature }}
+      AI_MODEL: ${{ github.event.inputs.gpt_model }}
+      TEMPERATURE: ${{ github.event.inputs.gpt_temperature }}
 
     steps:
       - name: Checkout repo
@@ -49,16 +49,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Check OpenAI API key
+      - name: Check OpenRouter API key
         run: |
-          if [ -z "$OPENAI_API_KEY" ]; then
-            echo "::error::OPENAI_API_KEY is not set. Please set it in repository secrets."
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::error::OPENROUTER_API_KEY is not set. Please set it in repository secrets."
             exit 1
           fi
           # Test the API key
-          response=$(curl -s -H "Authorization: Bearer $OPENAI_API_KEY" https://api.openai.com/v1/models)
-          if echo "$response" | grep -q "billing_not_active"; then
-            echo "::error::OpenAI API key is not active. Please check your billing details on OpenAI's website."
+          response=$(curl -s -H "Authorization: Bearer $OPENROUTER_API_KEY" https://openrouter.ai/api/v1/models)
+          if echo "$response" | grep -q "error"; then
+            echo "::error::OpenRouter API key is not valid. Please check your API key."
             exit 1
           fi
 

@@ -2,7 +2,6 @@ import os
 import re
 import requests
 from typing import Optional, Dict, Any
-from openai import OpenAI
 from dotenv import load_dotenv
 from datetime import datetime
 
@@ -14,8 +13,11 @@ from utils.baserow import (
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# OpenRouter configuration
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+AI_MODEL = os.getenv("AI_MODEL", "openai/gpt-4o")
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.1"))
 
 # Get Baserow configuration
 BASEROW_API_TOKEN = os.getenv("BASEROW_API_TOKEN")
@@ -30,6 +32,17 @@ print(
 if not BASEROW_CONVERSATION_TABLE_ID:
     print("❌ BASEROW_CONVERSATION_TABLE_ID is not set. Please update your .env file.")
     exit(1)
+
+
+def create_openrouter_client(api_key: str):
+    """Create an OpenRouter client using requests."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://paper-digest.com",  # Replace with your domain
+        "X-Title": "Paper Digest"  # Replace with your app name
+    }
+    return headers
 
 
 def extract_arxiv_id(text: str) -> Optional[str]:
@@ -139,7 +152,7 @@ When answering:
 
 
 def chat_with_paper(arxiv_id: str, question: str, paper_url: str) -> str:
-    """Chat with the paper using GPT."""
+    """Chat with the paper using OpenRouter."""
     # Fetch paper content
     paper_content = fetch_paper_content(arxiv_id)
     if "error" in paper_content:
@@ -155,16 +168,25 @@ def chat_with_paper(arxiv_id: str, question: str, paper_url: str) -> str:
     context = create_chat_context(paper_content, conversation_history)
 
     try:
-        # Get response from GPT
-        response = client.chat.completions.create(
-            model="gpt-4.1",
-            messages=[
+        # Get response from OpenRouter
+        headers = create_openrouter_client(OPENROUTER_API_KEY)
+        payload = {
+            "model": AI_MODEL,
+            "messages": [
                 {"role": "system", "content": context},
                 {"role": "user", "content": question}
             ],
-            temperature=0.1
+            "temperature": TEMPERATURE
+        }
+
+        response = requests.post(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers=headers,
+            json=payload
         )
-        answer = response.choices[0].message.content.strip()
+        response.raise_for_status()
+        result_data = response.json()
+        answer = result_data["choices"][0]["message"]["content"].strip()
 
         # Store conversation if table exists
         if BASEROW_CONVERSATION_TABLE_ID:
@@ -178,7 +200,7 @@ def chat_with_paper(arxiv_id: str, question: str, paper_url: str) -> str:
 
         return answer
     except Exception as e:
-        return f"❌ Error getting response from GPT: {str(e)}"
+        return f"❌ Error getting response from OpenRouter: {str(e)}"
 
 
 def show_conversation_history(paper_url: str):

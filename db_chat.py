@@ -1,6 +1,6 @@
 import os
+import requests
 from typing import List, Dict
-from openai import OpenAI
 from dotenv import load_dotenv
 from utils.qdrant import init_qdrant_client
 from qdrant_client.http import models
@@ -9,14 +9,28 @@ from qdrant_client.http.models import Distance, VectorParams
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# OpenRouter configuration
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+AI_MODEL = os.getenv("AI_MODEL", "openai/gpt-4o-mini")
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.1"))
 
 # Initialize Qdrant client
 qdrant_client = init_qdrant_client()
 
 # RAG-specific collection name
 RAG_COLLECTION_NAME = "rag_knowledge_base"
+
+
+def create_openrouter_client(api_key: str):
+    """Create an OpenRouter client using requests."""
+    headers = {
+        "Authorization": f"Bearer {api_key}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": "https://paper-digest.com",  # Replace with your domain
+        "X-Title": "Paper Digest"  # Replace with your app name
+    }
+    return headers
 
 
 def ensure_rag_collection_exists():
@@ -33,12 +47,25 @@ def ensure_rag_collection_exists():
 
 
 def get_embedding(text: str) -> List[float]:
-    """Get embedding for a text using OpenAI's API."""
-    response = client.embeddings.create(
-        input=text,
-        model="text-embedding-ada-002"
-    )
-    return response.data[0].embedding
+    """Get embedding for a text using OpenRouter's API."""
+    headers = create_openrouter_client(OPENROUTER_API_KEY)
+    payload = {
+        "input": text,
+        "model": "openai/text-embedding-ada-002"
+    }
+
+    try:
+        response = requests.post(
+            f"{OPENROUTER_BASE_URL}/embeddings",
+            headers=headers,
+            json=payload
+        )
+        response.raise_for_status()
+        result = response.json()
+        return result["data"][0]["embedding"]
+    except Exception as e:
+        print(f"❌ Error getting embedding: {str(e)}")
+        return []
 
 
 def add_to_knowledge_base(text: str, metadata: Dict = None):
@@ -93,17 +120,28 @@ Question: {query}
 
 Answer:"""
 
-    # Generate response using OpenAI
-    response = client.chat.completions.create(
-        model="gpt-4.1-mini",
-        messages=[
+    # Generate response using OpenRouter
+    headers = create_openrouter_client(OPENROUTER_API_KEY)
+    payload = {
+        "model": AI_MODEL,
+        "messages": [
             {"role": "system", "content": "You are a helpful assistant that answers questions based on the provided context."},
             {"role": "user", "content": prompt}
         ],
-        temperature=0.1
-    )
+        "temperature": TEMPERATURE
+    }
 
-    return response.choices[0].message.content
+    try:
+        response = requests.post(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers=headers,
+            json=payload
+        )
+        response.raise_for_status()
+        result_data = response.json()
+        return result_data["choices"][0]["message"]["content"]
+    except Exception as e:
+        return f"❌ Error generating response: {str(e)}"
 
 
 def main():

@@ -13,9 +13,11 @@ pip install -r requirements.txt
 2. Ensure your `.env` file has the following variables:
 
 ```
-OPENAI_API_KEY=your_openai_api_key
+OPENROUTER_API_KEY=your_openrouter_api_key
 QDRANT_API_URL=your_qdrant_cloud_url
 QDRANT_API_KEY=your_qdrant_cloud_api_key
+AI_MODEL=openai/gpt-4o-mini  # Optional: specify the model to use
+TEMPERATURE=0.1              # Optional: specify the temperature (0.0 to 1.0)
 ```
 
 3. Add documents to the knowledge base:
@@ -44,11 +46,12 @@ The chatbot will:
 
 ## Features
 
-- Uses OpenAI's text-embedding-ada-002 model for generating embeddings
-- Uses GPT-3.5-turbo for generating responses
+- Uses OpenRouter's text-embedding-ada-002 model for generating embeddings
+- Uses configurable AI models (default: GPT-4o-mini) for generating responses
 - Implements RAG using the existing Qdrant database
 - Supports metadata for documents
 - Interactive command-line interface
+- Configurable model and temperature via environment variables
 
 ## Integration with Existing System
 

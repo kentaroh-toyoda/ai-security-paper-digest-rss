@@ -8,7 +8,6 @@ from utils.gpt import assess_relevance_and_tags, assess_paper_quality
 from collections import defaultdict
 import requests
 from urllib.parse import quote
-import openai
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import Filter, FieldCondition, MatchValue
 
@@ -16,14 +15,16 @@ from qdrant_client.http.models import Filter, FieldCondition, MatchValue
 load_dotenv()
 
 # Get API keys and configuration
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 QDRANT_API_URL = os.getenv("QDRANT_API_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 OPENALEX_EMAIL = os.getenv("OPENALEX_EMAIL")
 OPENALEX_URL = "https://api.openalex.org/works"
+AI_MODEL = os.getenv("AI_MODEL", "openai/gpt-4o-mini")
+TEMPERATURE = float(os.getenv("TEMPERATURE", "0.1"))
 
-if not OPENAI_API_KEY:
-    raise ValueError("OPENAI_API_KEY environment variable is not set")
+if not OPENROUTER_API_KEY:
+    raise ValueError("OPENROUTER_API_KEY environment variable is not set")
 if not QDRANT_API_URL:
     raise ValueError("QDRANT_API_URL environment variable is not set")
 if not QDRANT_API_KEY:
@@ -183,7 +184,9 @@ def process_paper(paper: dict) -> dict:
         # Assess relevance and get tags
         result, _ = assess_relevance_and_tags(
             text=assessment_text,
-            api_key=OPENAI_API_KEY
+            api_key=OPENROUTER_API_KEY,
+            temperature=TEMPERATURE,
+            model=AI_MODEL
         )
 
         if result.get("relevant", False):
@@ -246,40 +249,30 @@ def process_paper(paper: dict) -> dict:
 
 
 def generate_related_keywords(query: str, api_key: str) -> list:
-    """Generate related keywords for the search query using GPT."""
-    prompt = f"""Given the search topic "{query}", generate 4 closely related keywords or phrases that would help find relevant papers.
-    The keywords should be specific and focused on the same domain.
-    Return only the keywords as a comma-separated list, without any additional text.
-    Example format: keyword1, keyword2, keyword3, keyword4"""
+    """Generate related keywords for a search query."""
+    from utils.gpt import generate_search_keywords
 
-    try:
-        client = openai.OpenAI(api_key=api_key)
-        response = client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant that generates relevant search keywords for academic papers."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.1,
-            max_tokens=100
-        )
+    # Generate optimized search keywords
+    optimized_query = generate_search_keywords(query, api_key)
 
-        # Extract and clean the keywords
-        keywords_text = response.choices[0].message.content.strip()
-        keywords = [k.strip() for k in keywords_text.split(',')]
+    # Split the query into individual terms
+    # Remove common operators and clean up
+    terms = optimized_query.replace(
+        "AND", "").replace("OR", "").replace("NOT", "")
+    terms = terms.replace("(", "").replace(")", "").replace('"', "")
 
-        # Ensure we have exactly 4 keywords
-        if len(keywords) > 4:
-            keywords = keywords[:4]
-        elif len(keywords) < 4:
-            # If we got fewer than 4 keywords, duplicate the last one
-            while len(keywords) < 4:
-                keywords.append(keywords[-1])
+    # Split by spaces and filter out empty strings
+    keywords = [term.strip() for term in terms.split() if term.strip()]
 
-        return keywords
-    except Exception as e:
-        print(f"Error generating related keywords: {e}")
-        return []
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_keywords = []
+    for keyword in keywords:
+        if keyword.lower() not in seen:
+            seen.add(keyword.lower())
+            unique_keywords.append(keyword)
+
+    return unique_keywords[:10]  # Limit to 10 keywords
 
 
 def main():
@@ -293,7 +286,7 @@ def main():
 
     # Generate related keywords
     print("\n🔍 Generating related keywords...")
-    related_keywords = generate_related_keywords(query, OPENAI_API_KEY)
+    related_keywords = generate_related_keywords(query, OPENROUTER_API_KEY)
     if related_keywords:
         print(f"Related keywords: {', '.join(related_keywords)}")
     else:

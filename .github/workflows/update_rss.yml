@@ -10,11 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     env:
       GH_PAT: ${{ secrets.GH_PAT }}
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       OPENALEX_EMAIL: ${{ secrets.OPENALEX_EMAIL }}
       QDRANT_API_URL: ${{ secrets.QDRANT_API_URL }}
       QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
       RSS_FEED_URL: ${{ secrets.RSS_FEED_URL }}
+      AI_MODEL: ${{ secrets.AI_MODEL || 'moonshotai/kimi-dev-72b:free' }}
+      TEMPERATURE: ${{ secrets.TEMPERATURE || '0.1' }}
 
     steps:
       - name: Checkout repo without default credentials
@@ -32,16 +34,16 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Check OpenAI API key
+      - name: Check OpenRouter API key
         run: |
-          if [ -z "$OPENAI_API_KEY" ]; then
-            echo "::error::OPENAI_API_KEY is not set. Please set it in repository secrets."
+          if [ -z "$OPENROUTER_API_KEY" ]; then
+            echo "::error::OPENROUTER_API_KEY is not set. Please set it in repository secrets."
             exit 1
           fi
           # Test the API key
-          response=$(curl -s -H "Authorization: Bearer $OPENAI_API_KEY" https://api.openai.com/v1/models)
-          if echo "$response" | grep -q "billing_not_active"; then
-            echo "::error::OpenAI API key is not active. Please check your billing details on OpenAI's website."
+          response=$(curl -s -H "Authorization: Bearer $OPENROUTER_API_KEY" https://openrouter.ai/api/v1/models)
+          if echo "$response" | grep -q "error"; then
+            echo "::error::OpenRouter API key is not valid. Please check your API key."
             exit 1
           fi
 
