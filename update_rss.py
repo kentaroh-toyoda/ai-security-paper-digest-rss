@@ -7,7 +7,7 @@ import requests
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from feedgen.feed import FeedGenerator
-from utils.llm import assess_relevance_and_tags, check_rate_limit
+from utils.llm import assess_relevance_and_tags, check_rate_limit_status, get_rate_limiter
 from utils.qdrant import init_qdrant_client, ensure_collection_exists, paper_exists, insert_paper
 
 load_dotenv()
@@ -172,11 +172,9 @@ def process_papers(raw_papers):
     relevant = []
     current_date = datetime.now(timezone.utc).date()
 
-    # Check rate limit before starting
-    if check_rate_limit(OPENROUTER_API_KEY):
-        print("⚠️ Rate limit detected. Consider waiting or using a different model.")
-        # You can choose to continue or exit here
-        # return relevant  # Uncomment to exit early
+    # Check rate limit status before starting
+    print("\n📊 Checking rate limit status...")
+    check_rate_limit_status()
 
     for paper in raw_papers:
         title = paper.title if hasattr(paper, 'title') else ""
@@ -229,7 +227,7 @@ def process_papers(raw_papers):
 
         insert_paper(qdrant_client, row)
         relevant.append(row)
-        time.sleep(1.5)  # prevent rate limiting
+        # Rate limiting is now handled automatically by the new system
 
     return relevant
 

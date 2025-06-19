@@ -4,7 +4,7 @@ import time
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from utils.qdrant import init_qdrant_client, ensure_collection_exists, paper_exists, insert_paper, get_all_papers
-from utils.llm import assess_relevance_and_tags, assess_paper_quality
+from utils.llm import assess_relevance_and_tags, assess_paper_quality, check_rate_limit_status
 from collections import defaultdict
 import requests
 from urllib.parse import quote
@@ -276,6 +276,10 @@ def generate_related_keywords(query: str, api_key: str) -> list:
 
 
 def main():
+    # Check rate limit status before starting
+    print("\n📊 Checking rate limit status...")
+    check_rate_limit_status()
+
     # Get search query from user with default value
     default_query = "LLM red teaming"
     query = input(
