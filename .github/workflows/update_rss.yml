@@ -74,6 +74,14 @@ jobs:
             exit 1
           fi
 
+      - name: Update daily limit for paid users
+        run: |
+          python -c "
+          from utils.llm import update_daily_limit_for_paid_user
+          update_daily_limit_for_paid_user()
+          print('✅ Updated daily limit to 1000 requests/day for paid user')
+          "
+
       - name: Run daily digest script
         run: python update_rss.py
 
