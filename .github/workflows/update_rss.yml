@@ -46,15 +46,25 @@ jobs:
 
           # Test the API key
           echo "Testing API key with OpenRouter..."
-          response=$(curl -s -H "Authorization: Bearer $OPENROUTER_API_KEY" https://openrouter.ai/api/v1/models)
-          echo "Response status: $?"
-          echo "Response preview: ${response:0:200}..."
+          response=$(curl -s -w "\n%{http_code}" -H "Authorization: Bearer $OPENROUTER_API_KEY" https://openrouter.ai/api/v1/models)
+          http_code=$(echo "$response" | tail -n1)
+          response_body=$(echo "$response" | head -n -1)
+          echo "Response HTTP code: $http_code"
+          echo "Response preview: ${response_body:0:200}..."
 
-          if echo "$response" | grep -q "error"; then
-            echo "::error::OpenRouter API key is not valid. Please check your API key."
-            echo "Full response: $response"
+          if [ "$http_code" != "200" ]; then
+            echo "::error::OpenRouter API key is not valid. HTTP code: $http_code"
+            echo "Full response: $response_body"
             exit 1
           fi
+
+          # Check for error in JSON response structure
+          if echo "$response_body" | jq -e '.error' > /dev/null 2>&1; then
+            echo "::error::OpenRouter API returned an error response."
+            echo "Full response: $response_body"
+            exit 1
+          fi
+
           echo "✅ OpenRouter API key is valid"
 
       - name: Check Qdrant credentials
