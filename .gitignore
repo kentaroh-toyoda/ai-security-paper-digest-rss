@@ -1,5 +1,5 @@
 .env
-papers.csv
+*.csv
 __pycache__/
 *.pyc
 .python-version
