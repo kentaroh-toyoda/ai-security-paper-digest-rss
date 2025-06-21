@@ -181,8 +181,13 @@ def display_papers(papers: List[Dict[str, Any]],
     print(f"\nTotal papers: {len(papers)}")
 
 
-def main():
-    # Parse command line arguments
+def parse_arguments():
+    """
+    Parse command line arguments.
+    
+    Returns:
+        Namespace object with parsed arguments
+    """
     parser = argparse.ArgumentParser(
         description='List papers from the Qdrant KB in a tabular format.'
     )
@@ -197,12 +202,18 @@ def main():
     parser.add_argument('--summary', action='store_true', help='Show summary')
     parser.add_argument('--max-width', type=int, default=80,
                         help='Maximum width for text fields')
+    
+    return parser.parse_args()
 
-    args = parser.parse_args()
+
+
+def main():
+    # Parse command line arguments
+    args = parse_arguments()
 
     # Initialize Qdrant client
     client = init_qdrant_client()
-    ensure_collection_exists(client)
+    ensure_collection_exists(client, verbose=False)
 
     # Get all papers
     print("Fetching papers from Qdrant KB...")
