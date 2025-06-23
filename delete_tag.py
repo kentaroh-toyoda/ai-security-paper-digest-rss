@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Script to add tags to a Qdrant point identified by a URL.
-Usage: python add_tags.py "tag1" "tag2" ... --url "https://example.com"
+Script to delete a tag from a Qdrant point identified by a URL.
+Usage: python delete_tags.py --url <URL> <TAG>
 """
 
 import argparse
@@ -32,8 +32,8 @@ def find_point_by_url(client, url: str):
     return response[0][0]
 
 
-def add_tags_to_point(client, point_id: str, new_tags: List[str]):
-    """Add tags to a point in Qdrant."""
+def delete_tag_from_point(client, point_id: str, tag_to_delete: str):
+    """Delete a tag from a point in Qdrant."""
     # First, get the current point to retrieve existing tags
     point = client.retrieve(
         collection_name=COLLECTION_NAME,
@@ -43,26 +43,30 @@ def add_tags_to_point(client, point_id: str, new_tags: List[str]):
     # Get existing tags or initialize empty list
     existing_tags = point.payload.get("tags", [])
     
-    # Combine existing and new tags, removing duplicates
-    all_tags = list(set(existing_tags + new_tags))
+    # Check if the tag exists
+    if tag_to_delete not in existing_tags:
+        return False, existing_tags
+    
+    # Remove the tag
+    updated_tags = [tag for tag in existing_tags if tag != tag_to_delete]
     
     # Update the point with the new tags
     client.set_payload(
         collection_name=COLLECTION_NAME,
-        payload={"tags": all_tags},
+        payload={"tags": updated_tags},
         points=[point_id]
     )
     
-    return all_tags
+    return True, updated_tags
 
 
 def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(
-        description='Add tags to a Qdrant point identified by a URL.'
+        description='Delete a tag from a Qdrant point identified by a URL.'
     )
-    parser.add_argument('tags', nargs='+', help='Tags to add to the point')
-    parser.add_argument('--url', required=True, help='URL of the paper to tag')
+    parser.add_argument('tag', help='Tag to delete from the point')
+    parser.add_argument('--url', required=True, help='URL of the paper')
     
     args = parser.parse_args()
     
@@ -81,22 +85,25 @@ def main():
         print(f"Error: No paper found with URL: {args.url}")
         sys.exit(1)
     
-    # Process tags - split any tags containing commas into separate tags
-    processed_tags = []
-    for tag in args.tags:
-        # Split by comma and strip whitespace
-        split_tags = [t.strip() for t in tag.split(',')]
-        # Add non-empty tags to the processed list
-        processed_tags.extend([t for t in split_tags if t])
-    
-    # Add tags to the point
+    # Delete tag from the point
     try:
-        all_tags = add_tags_to_point(client, point.id, processed_tags)
-        print(f"Successfully added tags to paper: {point.payload.get('title', 'Unknown paper')}")
-        print(f"URL: {args.url}")
-        print(f"All tags: {', '.join(all_tags)}")
+        success, remaining_tags = delete_tag_from_point(client, point.id, args.tag)
+        
+        if success:
+            print(f"Successfully deleted tag '{args.tag}' from paper: {point.payload.get('title', 'Unknown paper')}")
+            print(f"URL: {args.url}")
+            if remaining_tags:
+                print(f"Remaining tags: {', '.join(remaining_tags)}")
+            else:
+                print("No tags remaining.")
+        else:
+            print(f"Tag '{args.tag}' not found in paper: {point.payload.get('title', 'Unknown paper')}")
+            if remaining_tags:
+                print(f"Existing tags: {', '.join(remaining_tags)}")
+            else:
+                print("Paper has no tags.")
     except Exception as e:
-        print(f"Error adding tags: {str(e)}")
+        print(f"Error deleting tag: {str(e)}")
         sys.exit(1)
 
 
