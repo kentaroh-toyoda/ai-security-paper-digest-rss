@@ -32,7 +32,9 @@ def filter_papers(papers: List[Dict[str, Any]],
     Args:
         papers: List of paper dictionaries
         authors: Comma-separated list of authors to filter by
-        tags: Comma-separated list of tags to filter by
+        tags: Comma-separated list of tags to filter by. Use ! prefix for negative filtering
+              (e.g., "!read" to exclude papers with "read" tag). Note: Use quotes around tags
+              with ! to avoid shell interpretation.
         modalities: Comma-separated list of modalities to filter by
 
     Returns:
@@ -51,10 +53,24 @@ def filter_papers(papers: List[Dict[str, Any]],
     # Filter by tags
     if tags:
         tag_list = [t.strip().lower() for t in tags.split(',')]
-        filtered_papers = [
-            paper for paper in filtered_papers
-            if any(tag.lower() in [t.lower() for t in paper.get('tags', [])] for tag in tag_list)
-        ]
+        
+        # Split into positive and negative tags
+        positive_tags = [tag for tag in tag_list if not tag.startswith('!')]
+        negative_tags = [tag[1:] for tag in tag_list if tag.startswith('!')]
+        
+        # Filter for positive tags (papers must have at least one of these tags)
+        if positive_tags:
+            filtered_papers = [
+                paper for paper in filtered_papers
+                if any(tag.lower() in [t.lower() for t in paper.get('tags', [])] for tag in positive_tags)
+            ]
+        
+        # Filter out negative tags (papers must not have any of these tags)
+        if negative_tags:
+            filtered_papers = [
+                paper for paper in filtered_papers
+                if not any(neg_tag.lower() in [t.lower() for t in paper.get('tags', [])] for neg_tag in negative_tags)
+            ]
 
     # Filter by modalities
     if modalities:
@@ -194,7 +210,7 @@ def parse_arguments():
     parser.add_argument('--authors', type=str,
                         help='Filter by authors (comma-separated)')
     parser.add_argument('--tags', type=str,
-                        help='Filter by tags (comma-separated)')
+                        help='Filter by tags (comma-separated). Use ! prefix for negative filtering (e.g., "!read" to exclude papers with "read" tag). Note: Use quotes around tags with ! to avoid shell interpretation.')
     parser.add_argument('--modalities', type=str,
                         help='Filter by modalities (comma-separated)')
     parser.add_argument('--abstract', action='store_true',

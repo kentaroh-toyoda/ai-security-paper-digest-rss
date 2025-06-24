@@ -188,7 +188,7 @@ def process_papers(raw_papers):
     detailed_assessment_tokens = 0
     
     # Define models for different stages
-    QUICK_ASSESSMENT_MODEL = "mistralai/mistral-7b-instruct"  # Cheaper model for initial filtering
+    QUICK_ASSESSMENT_MODEL = "openai/gpt-4.1-nano"  # Cheaper model for initial filtering
     DETAILED_ASSESSMENT_MODEL = AI_MODEL  # More expensive model for detailed analysis
 
     # Check rate limit status before starting

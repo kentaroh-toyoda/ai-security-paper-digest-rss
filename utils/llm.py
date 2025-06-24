@@ -667,7 +667,7 @@ def reset_daily_limiter():
 
 
 @cached_llm_call
-def quick_assess_relevance(text: str, api_key: str, temperature: float = 0.1, model: str = "mistralai/mistral-7b-instruct") -> Tuple[bool, int]:
+def quick_assess_relevance(text: str, api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4.1-nano") -> Tuple[bool, int]:
     """Quick assessment of paper relevance using a smaller, cheaper model.
     
     This function performs a fast initial screening to determine if a paper is potentially

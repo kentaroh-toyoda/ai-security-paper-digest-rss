@@ -175,7 +175,7 @@ def process_paper(paper: dict) -> dict:
     }
 
     # Define models for different stages
-    QUICK_ASSESSMENT_MODEL = "mistralai/mistral-7b-instruct"  # Cheaper model for initial filtering
+    QUICK_ASSESSMENT_MODEL = "openai/gpt-4.1-nano"  # Cheaper model for initial filtering
     DETAILED_ASSESSMENT_MODEL = AI_MODEL  # More expensive model for detailed analysis
     
     # Process paper even if we don't have an abstract
