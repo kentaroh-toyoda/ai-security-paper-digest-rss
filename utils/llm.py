@@ -15,8 +15,8 @@ import re
 load_dotenv()
 
 # Default configuration
-DEFAULT_MODEL = "openai/gpt-4o"
-DEFAULT_MINI_MODEL = "openai/gpt-4o-mini"
+DEFAULT_MODEL = "openai/gpt-4.1"
+DEFAULT_MINI_MODEL = "openai/gpt-4.1-mini"
 DEFAULT_TEMPERATURE = 0.1
 
 # OpenRouter configuration
@@ -133,6 +133,53 @@ class RateLimiter:
 # Global rate limiter instances
 _rate_limiter = RateLimiter()
 _daily_limiter = DailyRateLimiter()
+
+# Simple in-memory cache for LLM responses
+_llm_response_cache = {}
+
+
+def get_cache_key(text: str, model: str, function_name: str) -> str:
+    """Generate a cache key for LLM responses.
+    
+    Args:
+        text: The input text
+        model: The model name
+        function_name: The function name (to avoid collisions between different functions)
+        
+    Returns:
+        str: A cache key
+    """
+    # Use the first 100 chars of text + model + function name as the key
+    # This is a simple approach - for production, consider using a hash function
+    return f"{function_name}:{model}:{text[:100]}"
+
+
+def cached_llm_call(func):
+    """Decorator to cache LLM responses."""
+    def wrapper(*args, **kwargs):
+        global _llm_response_cache
+        
+        # Extract relevant parameters for cache key
+        text = args[0] if len(args) > 0 else kwargs.get('text', '')
+        model = kwargs.get('model', args[3] if len(args) > 3 else None)
+        
+        # Generate cache key
+        cache_key = get_cache_key(text, model, func.__name__)
+        
+        # Check if we have a cached response
+        if cache_key in _llm_response_cache:
+            print(f"✅ Using cached LLM response for {func.__name__}")
+            return _llm_response_cache[cache_key]
+        
+        # If not in cache, call the function
+        result = func(*args, **kwargs)
+        
+        # Cache the result
+        _llm_response_cache[cache_key] = result
+        
+        return result
+    
+    return wrapper
 
 
 def get_rate_limiter():
@@ -272,6 +319,7 @@ def create_openrouter_client(api_key: str):
     return headers
 
 
+@cached_llm_call
 def generate_search_keywords(topic: str, api_key: str) -> str:
     """Generate optimized search keywords using OpenRouter.
 
@@ -284,25 +332,18 @@ def generate_search_keywords(topic: str, api_key: str) -> str:
     """
     headers = create_openrouter_client(api_key)
 
-    system_prompt = """You are an expert in academic paper search. Your task is to generate optimized search keywords for finding relevant papers in OpenAlex.
+    # Optimized prompt to reduce token usage
+    system_prompt = """Generate optimized search keywords for academic papers on OpenAlex.
 
-Consider:
-1. Technical terms and jargon in the field
-2. Alternative phrasings and synonyms
-3. Related concepts and methodologies
-4. Common abbreviations and acronyms
+Create a search query with:
+- OR for related terms
+- AND for required concepts
+- Quotes for exact phrases
+- NOT to exclude irrelevant areas
 
-Generate a search query that:
-- Uses OR operators to combine related terms
-- Uses AND operators to ensure relevance
-- Includes quotation marks for exact phrases
-- Excludes irrelevant terms with NOT
-- Is optimized for academic paper search
+Example: "LLM red teaming" → "large language model" AND ("red teaming" OR "jailbreaking") AND (security OR safety) NOT (medical)
 
-Example input: "LLM red teaming"
-Example output: "large language model" AND ("red teaming" OR "jailbreaking" OR "adversarial prompting") AND (security OR safety) NOT (medical OR healthcare)
-
-Respond with ONLY the search query, no explanations."""
+Respond with ONLY the search query."""
 
     payload = {
         "model": DEFAULT_MINI_MODEL,
@@ -404,78 +445,31 @@ def clean_and_extract_json(response_text: str) -> dict:
     exit(1)
 
 
+@cached_llm_call
 def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4o") -> Tuple[Dict[str, Any], int]:
     """Assess if a paper is relevant and extract tags using OpenRouter."""
     headers = create_openrouter_client(api_key)
 
-    system_prompt = """You are an expert in AI security and safety. Your task is to assess if a paper is relevant to AI security, safety, or red teaming, and extract relevant tags.
+    # Optimized prompt to reduce token usage while maintaining essential instructions
+    system_prompt = """Assess if this paper directly addresses AI security, safety, or red teaming.
 
-IMPORTANT: Be strict in your assessment. Only mark papers as relevant if they DIRECTLY address AI security, safety, or red teaming topics.
+Relevant topics: LLM red teaming, jailbreaking, prompt injection, adversarial prompting, model extraction, 
+data poisoning, privacy attacks, alignment, robustness, safety evaluation, security standards.
 
-Relevance criteria (paper MUST focus on one or more of these):
-1. AI Security & Red Teaming:
-   - LLM red teaming and jailbreaking
-   - Prompt injection and adversarial prompting
-   - Model extraction and stealing
-   - Data poisoning and backdoor attacks
-   - Privacy attacks (membership inference, model inversion)
-   - Security vulnerabilities in AI systems
+NOT relevant: General AI/ML papers, AI applications without security focus, AI ethics without security aspects.
 
-2. AI Safety & Alignment:
-   - Robustness against adversarial examples
-   - Alignment with human values
-   - Preventing harmful outputs
-   - Safety evaluation and testing
-   - Risk assessment and mitigation
+If relevant (score ≥3/5):
+- Summary (2-4 bullet points)
+- 3-5 tags
+- Relevance score (1-5)
+- Brief reason for score
+- Paper type (Research/Survey/Benchmarking/Position/Other)
+- Modalities (Text/Image/Video/Audio/Multimodal/Other)
 
-3. AI Governance & Policy:
-   - Security standards and best practices
-   - Regulatory compliance
-   - Security audits and certifications
-   - Incident response and monitoring
+If not relevant: {"relevant": false}
 
-NOT RELEVANT (examples):
-- General AI/ML papers without security focus
-- Papers about AI applications without security implications
-- Papers about AI ethics without security aspects
-- Papers about AI performance or efficiency without security context
-- Papers about AI explainability without security focus
-
-Paper Types to Identify (choose ONE that best fits):
-- Research Paper: Original research with novel contributions
-- Survey/Review: Comprehensive overview of existing work
-- Benchmarking: Evaluation and comparison of methods/systems
-- Position Paper: Opinion or perspective on a topic
-- Other: Any other type not covered above
-
-Modality Types to Identify (choose ALL that apply):
-- Text: Papers focusing on text-based models (LLMs, text classification, etc.)
-- Image: Papers focusing on image-based models (computer vision, image generation, etc.)
-- Video: Papers focusing on video-based models (video understanding, generation, etc.)
-- Audio: Papers focusing on audio-based models (speech recognition, audio generation, etc.)
-- Multimodal: Papers focusing on multiple modalities (text+image, text+audio, etc.)
-- Other: Papers focusing on other modalities or general AI security concepts
-
-If the paper is relevant:
-1. Provide a brief summary (2-4 bullet points)
-2. Extract 3-5 relevant tags
-3. Rate relevance from 1-5 (5 being most relevant)
-4. Provide a brief reason for the relevance rating
-5. Identify the paper type (choose ONE that best fits)
-6. Identify the modalities (choose ALL that apply)
-
-If the paper is not relevant, simply respond with {"relevant": false}.
-
-Respond in JSON format:
-{
-    "relevant": true/false,
-    "summary": ["point 1", "point 2", ...],
-    "tags": ["tag1", "tag2", ...],
-    "relevance_score": 1-5,
-    "reason": "brief explanation",
-    "paper_type": "type",
-    "modalities": ["text", "image", "video", "audio", "multimodal", "other"]
-}"""
+Output JSON: {"relevant": true/false, "summary": [...], "tags": [...], "relevance_score": 1-5, 
+"reason": "...", "paper_type": "...", "modalities": [...]}"""
 
     payload = {
         "model": model,
@@ -505,6 +499,7 @@ Respond in JSON format:
         return {"relevant": False}, 0
 
 
+@cached_llm_call
 def assess_paper_quality(metadata: dict, api_key: str, return_usage=False):
     """Assess paper quality using available metadata.
 
@@ -542,14 +537,14 @@ def assess_paper_quality(metadata: dict, api_key: str, return_usage=False):
     else:
         citation_context = f"This paper is {age_months} months old, so citation count is a good indicator of impact."
 
-    system_prompt = """You are an AI reviewer. Evaluate a research paper based on its metadata and abstract.
-Consider the following factors:
-1. Clarity: How well-written and clear is the paper based on the title and abstract?
-2. Novelty: How novel is the work based on the title, abstract, and publication venue?
-3. Significance: How significant is the work based on citations (considering paper age) and venue?
-4. Try-worthiness: Is this paper worth implementing or experimenting with?
+    # Optimized prompt to reduce token usage
+    system_prompt = """Evaluate this research paper on:
+1. Clarity (1-5): How clear is the writing?
+2. Novelty (1-5): How original is the work?
+3. Significance (1-5): How impactful is it?
+4. Try-worthiness: Worth implementing? (true/false)
 
-Also identify any code repository links if available."""
+Also extract any code repository links."""
 
     user_prompt = f"""Paper Metadata:
 Title: {metadata['title']}
@@ -667,3 +662,57 @@ def reset_daily_limiter():
     global _daily_limiter
     _daily_limiter = DailyRateLimiter()
     print("✅ Daily limiter reset to default limits")
+
+
+
+
+@cached_llm_call
+def quick_assess_relevance(text: str, api_key: str, temperature: float = 0.1, model: str = "mistralai/mistral-7b-instruct") -> Tuple[bool, int]:
+    """Quick assessment of paper relevance using a smaller, cheaper model.
+    
+    This function performs a fast initial screening to determine if a paper is potentially
+    relevant to AI security, safety, or red teaming. It uses a smaller, cheaper model
+    to reduce costs for the initial filtering stage.
+    
+    Args:
+        text: The paper title and abstract
+        api_key: OpenRouter API key
+        temperature: Temperature for the model (default: 0.1)
+        model: Model to use (default: mistralai/mistral-7b-instruct)
+        
+    Returns:
+        Tuple containing:
+        - Boolean indicating if the paper is potentially relevant
+        - Number of tokens used
+    """
+    headers = create_openrouter_client(api_key)
+    
+    system_prompt = """Determine if this paper is potentially relevant to AI security, safety, or red teaming.
+Key topics: LLM security, red teaming, jailbreaking, prompt injection, adversarial attacks, model extraction, 
+data poisoning, privacy attacks, alignment, robustness, safety evaluation, security standards.
+
+Respond with ONLY "yes" or "no"."""
+    
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": text}
+        ],
+        "temperature": temperature
+    }
+    
+    try:
+        response = make_rate_limited_request(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers=headers,
+            payload=payload
+        )
+        result_data = response.json()
+        result = result_data["choices"][0]["message"]["content"].lower().strip()
+        token_count = result_data["usage"]["total_tokens"]
+        
+        return "yes" in result, token_count
+    except Exception as e:
+        print(f"❌ Error in quick relevance assessment: {str(e)}")
+        return False, 0

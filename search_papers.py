@@ -5,7 +5,7 @@ import argparse
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from utils.qdrant import init_qdrant_client, ensure_collection_exists, paper_exists, insert_paper, get_all_papers
-from utils.llm import assess_relevance_and_tags, assess_paper_quality, check_rate_limit_status
+from utils.llm import assess_relevance_and_tags, assess_paper_quality, check_rate_limit_status, quick_assess_relevance
 from collections import defaultdict
 import requests
 from urllib.parse import quote
@@ -21,7 +21,7 @@ QDRANT_API_URL = os.getenv("QDRANT_API_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 OPENALEX_EMAIL = os.getenv("OPENALEX_EMAIL")
 OPENALEX_URL = "https://api.openalex.org/works"
-AI_MODEL = os.getenv("AI_MODEL", "openai/gpt-4o-mini")
+AI_MODEL = os.getenv("AI_MODEL", "openai/gpt-4.1-mini")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.1"))
 
 if not OPENROUTER_API_KEY:
@@ -174,21 +174,54 @@ def process_paper(paper: dict) -> dict:
         "code_repository": ""  # Add code repository field
     }
 
+    # Define models for different stages
+    QUICK_ASSESSMENT_MODEL = "mistralai/mistral-7b-instruct"  # Cheaper model for initial filtering
+    DETAILED_ASSESSMENT_MODEL = AI_MODEL  # More expensive model for detailed analysis
+    
     # Process paper even if we don't have an abstract
     try:
-        print(f"🤖 Assessing relevance and tags...")
         # Use title for assessment if no abstract is available
         assessment_text = f"Title: {title}"
         if abstract_text:
             assessment_text += f"\n\nAbstract: {abstract_text}"
 
-        # Assess relevance and get tags
-        result, _ = assess_relevance_and_tags(
-            text=assessment_text,
+        # STAGE 1: Quick assessment with cheaper model
+        print(f"🔍 Quick relevance assessment...")
+        potentially_relevant, quick_tokens = quick_assess_relevance(
+            assessment_text, 
+            OPENROUTER_API_KEY, 
+            temperature=TEMPERATURE, 
+            model=QUICK_ASSESSMENT_MODEL
+        )
+        
+        if not potentially_relevant:
+            print(f"🚫 Not relevant (quick assessment): {title}")
+            return paper_data  # Return with default values (not relevant)
+            
+        print(f"✓ Potentially relevant (quick assessment): {title}")
+        
+        # STAGE 2: Detailed assessment with more expensive model
+        print(f"🔍 Detailed relevance assessment...")
+        result, detailed_tokens = assess_relevance_and_tags(
+            assessment_text,
             api_key=OPENROUTER_API_KEY,
             temperature=TEMPERATURE,
-            model=AI_MODEL
+            model=DETAILED_ASSESSMENT_MODEL
         )
+        
+        # Print token usage
+        print(f"📊 Token usage:")
+        print(f"  Quick assessment: {quick_tokens} tokens")
+        print(f"  Detailed assessment: {detailed_tokens} tokens")
+        print(f"  Total: {quick_tokens + detailed_tokens} tokens")
+        
+        # Calculate cost savings
+        quick_cost = estimate_cost(quick_tokens, QUICK_ASSESSMENT_MODEL)
+        detailed_cost = estimate_cost(detailed_tokens, DETAILED_ASSESSMENT_MODEL)
+        old_approach_cost = estimate_cost(quick_tokens + detailed_tokens, DETAILED_ASSESSMENT_MODEL)
+        savings = old_approach_cost - (quick_cost + detailed_cost)
+        
+        print(f"💰 Estimated cost savings: ${savings:.6f}")
 
         if result.get("relevant", False):
             print(f"✅ Paper is relevant")
@@ -210,7 +243,7 @@ def process_paper(paper: dict) -> dict:
             if paper_data["code_repository"]:
                 print(f"  Code Repository: {paper_data['code_repository']}")
         else:
-            print(f"❌ Paper is not relevant")
+            print(f"❌ Paper is not relevant (detailed assessment)")
     except Exception as e:
         print(f"❌ Error processing paper '{title}': {e}")
         return None  # Return None to indicate processing failed
@@ -274,6 +307,65 @@ def generate_related_keywords(query: str, api_key: str) -> list:
             unique_keywords.append(keyword)
 
     return unique_keywords[:10]  # Limit to 10 keywords
+
+
+# Add a function to estimate cost based on token usage and model
+def estimate_cost(tokens, model=None):
+    """Estimate cost based on token usage and model.
+
+    Args:
+        tokens: Number of tokens used
+        model: Model name (e.g., 'openai/gpt-4o', 'moonshotai/kimi-dev-72b:free')
+
+    Returns:
+        float: Estimated cost in USD
+    """
+    if model is None:
+        model = AI_MODEL
+
+    # Pricing per 1K tokens (input/output combined for simplicity)
+    # Based on OpenRouter pricing as of 2024
+    pricing = {
+        # OpenAI models
+        "openai/gpt-4o": 0.005,  # $5.00 per 1M tokens
+        "openai/gpt-4o-mini": 0.00015,  # $0.15 per 1M tokens
+        "openai/gpt-4-turbo": 0.01,  # $10.00 per 1M tokens
+        "openai/gpt-3.5-turbo": 0.0005,  # $0.50 per 1M tokens
+        "openai/gpt-4.1": 0.01,  # $10.00 per 1M tokens
+        "openai/gpt-4.1-mini": 0.00015,  # $0.15 per 1M tokens
+        "openai/gpt-4.1-nano": 0.000075,  # $0.075 per 1M tokens
+
+        # Anthropic models
+        "anthropic/claude-3-5-sonnet": 0.003,  # $3.00 per 1M tokens
+        "anthropic/claude-3-haiku": 0.00025,  # $0.25 per 1M tokens
+        "anthropic/claude-3-sonnet": 0.015,  # $15.00 per 1M tokens
+        "anthropic/claude-3-opus": 0.075,  # $75.00 per 1M tokens
+
+        # Google models
+        "google/gemini-pro": 0.0005,  # $0.50 per 1M tokens
+        "google/gemini-flash": 0.000075,  # $0.075 per 1M tokens
+
+        # Meta models
+        "meta-llama/llama-3.1-8b-instruct": 0.0002,  # $0.20 per 1M tokens
+        "meta-llama/llama-3.1-70b-instruct": 0.0008,  # $0.80 per 1M tokens
+
+        # Moonshot models
+        "moonshotai/kimi-dev-72b:free": 0.0,  # Free tier
+        "moonshotai/kimi-dev-72b": 0.0006,  # $0.60 per 1M tokens
+
+        # Mistral models
+        "mistralai/mistral-7b-instruct": 0.00014,  # $0.14 per 1M tokens
+        "mistralai/mixtral-8x7b-instruct": 0.00024,  # $0.24 per 1M tokens
+
+        # Default fallback
+        "default": 0.001  # $1.00 per 1M tokens
+    }
+
+    # Get cost per token (convert from per 1M to per token)
+    cost_per_1k_tokens = pricing.get(model, pricing["default"])
+    cost_per_token = cost_per_1k_tokens / 1000
+
+    return round(tokens * cost_per_token, 6)
 
 
 def main():
