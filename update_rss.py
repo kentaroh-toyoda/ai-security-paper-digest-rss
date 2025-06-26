@@ -193,7 +193,8 @@ def process_papers(raw_papers):
     
     # Define delay between detailed assessments to avoid rate limiting
     # Only apply delay for models subject to free tier limit (like kimi)
-    DETAILED_ASSESSMENT_DELAY = 3  # seconds between requests
+    # With 20 requests per minute allowed, we can safely use a 1.5 second delay (60/20 = 3, but we can be a bit more aggressive)
+    DETAILED_ASSESSMENT_DELAY = 1.5  # seconds between requests
     
     # Check if the detailed assessment model is subject to rate limiting
     is_free_tier_model = DETAILED_ASSESSMENT_MODEL.endswith(':free')

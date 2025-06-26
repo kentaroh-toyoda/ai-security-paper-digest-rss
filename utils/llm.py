@@ -8,7 +8,7 @@ import threading
 from collections import deque
 from dotenv import load_dotenv
 from typing import Tuple, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import re
 
 # Load environment variables
@@ -50,11 +50,30 @@ class DailyRateLimiter:
 
             # Check if we're at the daily limit
             if len(self.request_dates) >= self.daily_limit:
-                print(f"❌ Daily rate limit reached. Terminating process.")
-                print(
-                    f"💡 You've reached the daily limit ({self.daily_limit} requests/day).")
-                print(f"💡 Daily limit resets at midnight UTC.")
-                exit(1)
+                # Calculate time until midnight UTC (when the daily limit resets)
+                midnight_utc = datetime.combine(today + timedelta(days=1), datetime.min.time()).replace(tzinfo=timezone.utc)
+                now_utc = now.replace(tzinfo=timezone.utc)
+                wait_time = (midnight_utc - now_utc).total_seconds()
+                
+                print(f"⏱️ Daily rate limit reached. Waiting until midnight UTC ({wait_time:.1f} seconds)...")
+                print(f"💡 You've reached the daily limit ({self.daily_limit} requests/day).")
+                
+                # If wait time is too long (more than 1 hour), exit instead of waiting
+                if wait_time > 3600:
+                    print(f"❌ Wait time too long ({wait_time:.1f} seconds). Terminating process.")
+                    exit(1)
+                
+                # Release the lock while waiting
+                self.lock.release()
+                time.sleep(wait_time)
+                # Reacquire the lock
+                self.lock.acquire()
+                
+                # After waiting, recalculate and clean up old requests
+                now = datetime.now()
+                today = now.date()
+                while self.request_dates and self.request_dates[0].date() < today:
+                    self.request_dates.popleft()
 
             # Add current request
             self.request_dates.append(now)
@@ -103,12 +122,17 @@ class RateLimiter:
                     (now - oldest_request) + SAFETY_MARGIN
 
                 if wait_time > 0:
-                    print(f"❌ Rate limit reached. Terminating process.")
-                    print(
-                        f"💡 You've reached the OpenRouter free tier limit ({self.requests_per_window} requests/{self.window_seconds} seconds).")
-                    print(
-                        f"💡 Please wait {wait_time:.1f} seconds before trying again.")
-                    exit(1)
+                    print(f"⏱️ Rate limit reached. Waiting {wait_time:.1f} seconds...")
+                    # Release the lock while waiting
+                    self.lock.release()
+                    time.sleep(wait_time)
+                    # Reacquire the lock
+                    self.lock.acquire()
+                    
+                    # After waiting, recalculate and clean up old requests
+                    now = time.time()
+                    while self.request_times and now - self.request_times[0] >= self.window_seconds:
+                        self.request_times.popleft()
 
             # Add current request
             self.request_times.append(now)
@@ -241,18 +265,19 @@ def make_rate_limited_request(url, headers, payload, max_retries=3, retry_delay=
             response = requests.post(
                 url, headers=headers, json=payload, timeout=30)
 
-            # Handle rate limit errors - terminate process
+            # Handle rate limit errors - wait and retry
             if response.status_code == 429:
-                print(
-                    f"❌ Rate limit hit on attempt {attempt + 1}. Terminating process.")
+                # Get retry-after header if available, otherwise use default wait time
+                retry_after = int(response.headers.get('retry-after', 60))
+                print(f"⏱️ Rate limit hit on attempt {attempt + 1}. Waiting {retry_after} seconds...")
+                
                 if is_free:
-                    print(
-                        f"💡 You've reached the OpenRouter free tier limit (20 requests/minute).")
-                    print(f"💡 Please wait a minute before trying again.")
+                    print(f"💡 You've reached the OpenRouter free tier limit (20 requests/minute).")
                 else:
                     print(f"💡 You've reached the OpenRouter rate limit.")
-                    print(f"💡 Please wait before trying again.")
-                exit(1)
+                
+                time.sleep(retry_after)
+                continue
 
             # Handle other errors
             if response.status_code != 200:
