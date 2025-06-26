@@ -196,6 +196,17 @@ def is_free_model(model_name):
     """Check if a model is a free model variant."""
     return model_name and model_name.endswith(':free')
 
+def is_exempt_from_rate_limit(model_name):
+    """Check if a model should be exempt from the rate limit counter.
+    
+    Some models like gpt-4.1-nano are not counted toward the OpenRouter free tier limit.
+    """
+    exempt_models = [
+        "openai/gpt-4.1-nano",
+        # Add other models that don't count toward the rate limit
+    ]
+    return model_name in exempt_models
+
 
 def update_daily_limit_for_paid_user():
     """Update daily limit for users who have purchased 10+ credits."""
@@ -213,6 +224,7 @@ def make_rate_limited_request(url, headers, payload, max_retries=3, retry_delay=
     # Check if this is a free model request
     model_name = payload.get("model", "")
     is_free = is_free_model(model_name)
+    is_exempt = is_exempt_from_rate_limit(model_name)
 
     for attempt in range(max_retries):
         try:
@@ -221,7 +233,9 @@ def make_rate_limited_request(url, headers, payload, max_retries=3, retry_delay=
                 daily_limiter.check_and_record()
 
             # Wait if necessary to respect rate limits
-            rate_limiter.wait_if_needed()
+            # Skip rate limiting for exempt models like gpt-4.1-nano
+            if not is_exempt:
+                rate_limiter.wait_if_needed()
 
             # Make the request
             response = requests.post(

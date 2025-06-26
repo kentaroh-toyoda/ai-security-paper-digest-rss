@@ -190,7 +190,14 @@ def process_papers(raw_papers):
     # Define models for different stages
     QUICK_ASSESSMENT_MODEL = "openai/gpt-4.1-nano"  # Cheaper model for initial filtering
     DETAILED_ASSESSMENT_MODEL = AI_MODEL  # More expensive model for detailed analysis
-
+    
+    # Define delay between detailed assessments to avoid rate limiting
+    # Only apply delay for models subject to free tier limit (like kimi)
+    DETAILED_ASSESSMENT_DELAY = 3  # seconds between requests
+    
+    # Check if the detailed assessment model is subject to rate limiting
+    is_free_tier_model = DETAILED_ASSESSMENT_MODEL.endswith(':free')
+    
     # Check rate limit status before starting
     print("\n📊 Checking rate limit status...")
     check_rate_limit_status()
@@ -229,6 +236,14 @@ def process_papers(raw_papers):
         
         # STAGE 2: Detailed assessment with more expensive model
         print(f"🔍 Detailed relevance assessment...")
+        
+        # Add delay between detailed assessments if using a free tier model
+        # This helps avoid hitting the rate limit (20 requests/60 seconds)
+        if is_free_tier_model and len(relevant) > 0:
+            delay_time = DETAILED_ASSESSMENT_DELAY
+            print(f"⏱️ Adding delay of {delay_time}s before detailed assessment to avoid rate limiting...")
+            time.sleep(delay_time)
+            
         result, detailed_tokens = assess_relevance_and_tags(
             fulltext, OPENROUTER_API_KEY, temperature=TEMPERATURE, model=DETAILED_ASSESSMENT_MODEL)
         detailed_assessment_tokens += detailed_tokens
