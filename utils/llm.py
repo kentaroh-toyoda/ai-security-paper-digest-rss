@@ -29,6 +29,22 @@ FREE_TIER_DAILY_LIMIT = 50  # Default daily limit for free tier
 FREE_TIER_DAILY_LIMIT_PAID = 1000  # Daily limit if you've purchased 10+ credits
 SAFETY_MARGIN = 0.1  # 10% safety margin
 
+# OpenRouter pricing (per 1M tokens) - Updated as of Dec 2024
+# These are approximate rates and may change
+OPENROUTER_PRICING = {
+    "openai/gpt-4o": {"input": 2.50, "output": 10.00},
+    "openai/gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "openai/gpt-4.1": {"input": 30.00, "output": 60.00},
+    "openai/gpt-4.1-mini": {"input": 3.00, "output": 12.00},
+    "openai/gpt-4.1-nano": {"input": 0.00, "output": 0.00},  # Free model
+    "anthropic/claude-3.5-sonnet": {"input": 3.00, "output": 15.00},
+    "anthropic/claude-3-haiku": {"input": 0.25, "output": 1.25},
+    "meta-llama/llama-3.1-8b-instruct": {"input": 0.18, "output": 0.18},
+    "meta-llama/llama-3.1-70b-instruct": {"input": 0.88, "output": 0.88},
+    "mistralai/mistral-7b-instruct": {"input": 0.20, "output": 0.20},
+    "google/gemini-pro": {"input": 0.50, "output": 1.50},
+}
+
 
 class DailyRateLimiter:
     """Rate limiter for daily API call limits."""
@@ -527,15 +543,89 @@ Output JSON: {"relevant": true/false, "summary": [...], "tags": [...], "relevanc
         )
         result_data = response.json()
         result = result_data["choices"][0]["message"]["content"]
-        token_count = result_data["usage"]["total_tokens"]
-
+        
+        # Extract token usage
+        usage = result_data.get("usage", {})
+        input_tokens = usage.get("prompt_tokens", 0)
+        output_tokens = usage.get("completion_tokens", 0)
+        total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+        
+        # Calculate cost
+        cost = calculate_cost(input_tokens, output_tokens, model)
+        
         # Use the improved JSON extraction function
         result_dict = clean_and_extract_json(result)
-        return result_dict, token_count
+        
+        # Add cost information to the result for display
+        if cost > 0:
+            print(f"💰 Relevance assessment cost: {format_cost(cost)}")
+        
+        return result_dict, total_tokens
 
     except Exception as e:
         print(f"❌ Error calling OpenRouter API: {str(e)}")
         return {"relevant": False}, 0
+
+
+def assess_relevance_and_tags_with_cost(text: str, api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4o") -> Tuple[Dict[str, Any], int, float]:
+    """Assess if a paper is relevant and extract tags with cost estimation."""
+    headers = create_openrouter_client(api_key)
+
+    # Optimized prompt to reduce token usage while maintaining essential instructions
+    system_prompt = """Assess if this paper directly addresses AI security, safety, or red teaming.
+
+Relevant topics: LLM red teaming, jailbreaking, prompt injection, adversarial prompting, model extraction, 
+data poisoning, privacy attacks, alignment, robustness, safety evaluation, security standards.
+
+NOT relevant: General AI/ML papers, AI applications without security focus, AI ethics without security aspects.
+
+If relevant (score ≥3/5):
+- Summary (2-4 bullet points)
+- 3-5 tags
+- Relevance score (1-5)
+- Brief reason for score
+- Paper type (Research/Survey/Benchmarking/Position/Other)
+- Modalities (Text/Image/Video/Audio/Multimodal/Other)
+
+If not relevant: {"relevant": false}
+
+Output JSON: {"relevant": true/false, "summary": [...], "tags": [...], "relevance_score": 1-5, 
+"reason": "...", "paper_type": "...", "modalities": [...]}"""
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": text}
+        ],
+        "temperature": temperature
+    }
+
+    try:
+        response = make_rate_limited_request(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers=headers,
+            payload=payload
+        )
+        result_data = response.json()
+        result = result_data["choices"][0]["message"]["content"]
+        
+        # Extract token usage
+        usage = result_data.get("usage", {})
+        input_tokens = usage.get("prompt_tokens", 0)
+        output_tokens = usage.get("completion_tokens", 0)
+        total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+        
+        # Calculate cost
+        cost = calculate_cost(input_tokens, output_tokens, model)
+
+        # Use the improved JSON extraction function
+        result_dict = clean_and_extract_json(result)
+        return result_dict, total_tokens, cost
+
+    except Exception as e:
+        print(f"❌ Error calling OpenRouter API: {str(e)}")
+        return {"relevant": False}, 0, 0.0
 
 
 @cached_llm_call
@@ -755,3 +845,272 @@ Respond with ONLY "yes" or "no"."""
     except Exception as e:
         print(f"❌ Error in quick relevance assessment: {str(e)}")
         return False, 0
+
+
+@cached_llm_call
+def extract_paper_structure(text: str, api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4o") -> Tuple[Dict[str, Any], int]:
+    """Extract and structure paper content into organized sections.
+    
+    Args:
+        text: The full paper text
+        api_key: OpenRouter API key
+        temperature: Temperature for the model (default: 0.1)
+        model: Model to use (default: openai/gpt-4o)
+        
+    Returns:
+        Tuple containing:
+        - Dictionary with structured sections
+        - Number of tokens used
+    """
+    headers = create_openrouter_client(api_key)
+    
+    system_prompt = """Extract and organize this academic paper into structured sections in markdown format.
+
+Identify and extract the following sections if they exist:
+- abstract: Paper abstract
+- introduction: Introduction/background section
+- methodology: Methods, approach, or experimental setup
+- results: Results, findings, or evaluation
+- discussion: Discussion or analysis of results
+- conclusion: Conclusion or future work
+- references: References/bibliography
+- appendix: Any appendix content
+
+For each section, provide the content in clean markdown format. If a section doesn't exist, omit it from the output.
+
+Output as JSON:
+{
+  "title": "Extracted paper title",
+  "authors": ["Author 1", "Author 2"],
+  "sections": {
+    "abstract": "Abstract content in markdown...",
+    "introduction": "Introduction content in markdown...",
+    "methodology": "Methodology content in markdown...",
+    "results": "Results content in markdown...",
+    "discussion": "Discussion content in markdown...",
+    "conclusion": "Conclusion content in markdown...",
+    "references": "References in markdown...",
+    "appendix": "Appendix content in markdown..."
+  }
+}"""
+    
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Please extract and structure this paper:\n\n{text}"}
+        ],
+        "temperature": temperature
+    }
+    
+    try:
+        response = make_rate_limited_request(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers=headers,
+            payload=payload
+        )
+        result_data = response.json()
+        result = result_data["choices"][0]["message"]["content"]
+        token_count = result_data["usage"]["total_tokens"]
+        
+        # Use the improved JSON extraction function
+        result_dict = clean_and_extract_json(result)
+        return result_dict, token_count
+        
+    except Exception as e:
+        print(f"❌ Error extracting paper structure: {str(e)}")
+        return {"error": str(e)}, 0
+
+
+@cached_llm_call
+@cached_llm_call
+def analyze_paper_content(structured_content: Dict[str, Any], api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4o") -> Tuple[str, int]:
+    """Analyze structured paper content and provide a comprehensive analysis.
+    
+    Args:
+        structured_content: Dictionary containing structured paper sections
+        api_key: OpenRouter API key
+        temperature: Temperature for the model (default: 0.1)
+        model: Model to use (default: openai/gpt-4o)
+        
+    Returns:
+        Tuple containing:
+        - Analysis text
+        - Number of tokens used
+    """
+    headers = create_openrouter_client(api_key)
+    
+    # Create a summary of the paper content for analysis
+    paper_summary = f"""Title: {structured_content.get('title', 'Unknown')}
+Authors: {', '.join(structured_content.get('authors', []))}
+
+Abstract: {structured_content.get('sections', {}).get('abstract', 'No abstract available')}
+
+Introduction: {structured_content.get('sections', {}).get('introduction', 'No introduction available')[:1000]}...
+
+Methodology: {structured_content.get('sections', {}).get('methodology', 'No methodology available')[:1000]}...
+
+Results: {structured_content.get('sections', {}).get('results', 'No results available')[:1000]}...
+
+Conclusion: {structured_content.get('sections', {}).get('conclusion', 'No conclusion available')[:1000]}..."""
+    
+    system_prompt = """Analyze this academic paper and provide a comprehensive analysis covering:
+
+1. **Main Contributions**: What are the key contributions of this work?
+2. **Methodology**: What approach or methods did the authors use?
+3. **Key Findings**: What are the most important results or findings?
+4. **Significance**: Why is this work important? What impact might it have?
+5. **Limitations**: What are the limitations or potential weaknesses?
+6. **Future Work**: What future research directions does this suggest?
+
+Provide a clear, structured analysis that would be helpful for someone trying to understand the paper's value and implications."""
+    
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": paper_summary}
+        ],
+        "temperature": temperature
+    }
+    
+    try:
+        response = make_rate_limited_request(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers=headers,
+            payload=payload
+        )
+        result_data = response.json()
+        analysis = result_data["choices"][0]["message"]["content"]
+        token_count = result_data["usage"]["total_tokens"]
+        
+        return analysis, token_count
+        
+    except Exception as e:
+        print(f"❌ Error analyzing paper content: {str(e)}")
+        return f"Error analyzing paper: {str(e)}", 0
+
+
+def calculate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
+    """Calculate the estimated cost for an API call.
+    
+    Args:
+        input_tokens: Number of input tokens
+        output_tokens: Number of output tokens
+        model: Model name
+        
+    Returns:
+        Estimated cost in USD
+    """
+    if model not in OPENROUTER_PRICING:
+        # Default to GPT-4o pricing if model not found
+        pricing = OPENROUTER_PRICING.get("openai/gpt-4o", {"input": 2.50, "output": 10.00})
+    else:
+        pricing = OPENROUTER_PRICING[model]
+    
+    input_cost = (input_tokens / 1_000_000) * pricing["input"]
+    output_cost = (output_tokens / 1_000_000) * pricing["output"]
+    
+    return input_cost + output_cost
+
+
+def format_cost(cost: float) -> str:
+    """Format cost for display.
+    
+    Args:
+        cost: Cost in USD
+        
+    Returns:
+        Formatted cost string
+    """
+    if cost == 0:
+        return "Free"
+    elif cost < 0.001:
+        return f"${cost:.6f}"
+    elif cost < 0.01:
+        return f"${cost:.4f}"
+    else:
+        return f"${cost:.3f}"
+
+
+def extract_paper_structure_with_cost(text: str, api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4o") -> Tuple[Dict[str, Any], int, float]:
+    """Extract and structure paper content with cost estimation.
+    
+    Args:
+        text: The full paper text
+        api_key: OpenRouter API key
+        temperature: Temperature for the model (default: 0.1)
+        model: Model to use (default: openai/gpt-4o)
+        
+    Returns:
+        Tuple containing:
+        - Dictionary with structured sections
+        - Number of tokens used
+        - Estimated cost in USD
+    """
+    headers = create_openrouter_client(api_key)
+    
+    system_prompt = """Extract and organize this academic paper into structured sections in markdown format.
+
+Identify and extract the following sections if they exist:
+- abstract: Paper abstract
+- introduction: Introduction/background section
+- methodology: Methods, approach, or experimental setup
+- results: Results, findings, or evaluation
+- discussion: Discussion or analysis of results
+- conclusion: Conclusion or future work
+- references: References/bibliography
+- appendix: Any appendix content
+
+For each section, provide the content in clean markdown format. If a section doesn't exist, omit it from the output.
+
+Output as JSON:
+{
+  "title": "Extracted paper title",
+  "authors": ["Author 1", "Author 2"],
+  "sections": {
+    "abstract": "Abstract content in markdown...",
+    "introduction": "Introduction content in markdown...",
+    "methodology": "Methodology content in markdown...",
+    "results": "Results content in markdown...",
+    "discussion": "Discussion content in markdown...",
+    "conclusion": "Conclusion content in markdown...",
+    "references": "References in markdown...",
+    "appendix": "Appendix content in markdown..."
+  }
+}"""
+    
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Please extract and structure this paper:\n\n{text}"}
+        ],
+        "temperature": temperature
+    }
+    
+    try:
+        response = make_rate_limited_request(
+            f"{OPENROUTER_BASE_URL}/chat/completions",
+            headers=headers,
+            payload=payload
+        )
+        result_data = response.json()
+        result = result_data["choices"][0]["message"]["content"]
+        
+        # Extract token usage
+        usage = result_data.get("usage", {})
+        input_tokens = usage.get("prompt_tokens", 0)
+        output_tokens = usage.get("completion_tokens", 0)
+        total_tokens = usage.get("total_tokens", input_tokens + output_tokens)
+        
+        # Calculate cost
+        cost = calculate_cost(input_tokens, output_tokens, model)
+        
+        # Use the improved JSON extraction function
+        result_dict = clean_and_extract_json(result)
+        return result_dict, total_tokens, cost
+        
+    except Exception as e:
+        print(f"❌ Error extracting paper structure: {str(e)}")
+        return {"error": str(e)}, 0, 0.0

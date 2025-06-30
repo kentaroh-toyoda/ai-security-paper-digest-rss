@@ -81,6 +81,25 @@ This will:
 3. Store relevant papers in Qdrant
 4. Generate an RSS feed (`rss.xml`)
 
+### Process ArXiv Papers
+
+```bash
+python paper_read.py --url https://arxiv.org/abs/2411.14133
+```
+
+This will:
+
+1. Download the PDF from ArXiv
+2. Extract and structure the paper content into sections
+3. **Display estimated cost** for AI processing operations
+4. Store the structured content in Qdrant for future analysis
+5. Enable resumable conversations about the paper
+
+**Cost Estimation**: The script now shows estimated costs for each AI operation:
+- **Free models** (gpt-4.1-nano): $0.00
+- **Cost-effective** (gpt-4o-mini): ~$0.004 per paper
+- **High-quality** (gpt-4o): ~$0.068 per paper
+
 ### Chat with Papers
 
 ```bash
@@ -136,6 +155,7 @@ This tool integrates with:
 
 - `search_papers.py`: Search OpenAlex for papers
 - `update_rss.py`: Update RSS feed from ArXiv
+- `paper_read.py`: Download and process individual ArXiv papers
 - `db_chat.py`: Chat with stored papers
 - `check_rate_limit.py`: Check rate limit status
 - `test_rate_limiting.py`: Test rate limiting functionality
