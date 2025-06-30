@@ -178,81 +178,92 @@ def fetch_from_openalex(openalex_id):
     return paper_data
 
 
-def process_paper(paper_data):
+def process_paper(paper_data, skip_relevance=False):
     """Process a paper and prepare it for Qdrant."""
     title = paper_data.get("title", "Unknown")
     print(f"\n🔍 Processing paper: {title}")
     
-    # Define models for different stages
-    QUICK_ASSESSMENT_MODEL = "openai/gpt-4.1-nano"  # Cheaper model for initial filtering
-    DETAILED_ASSESSMENT_MODEL = AI_MODEL  # More expensive model for detailed analysis
-    
-    try:
-        # Use title and abstract for assessment
-        assessment_text = f"Title: {title}"
-        abstract = paper_data.get("abstract", "")
-        if abstract:
-            assessment_text += f"\n\nAbstract: {abstract}"
+    if skip_relevance:
+        print(f"⏭️ Skipping relevance assessment as requested")
+        # Set default values when skipping relevance check
+        paper_data["tags"] = []
+        paper_data["relevance_score"] = 1  # Set to 1 to ensure it passes the save condition
+        paper_data["paper_type"] = "Other"
+        paper_data["summary"] = []
+        paper_data["modalities"] = []
+        paper_data["code_repository"] = ""
+        print(f"✅ Paper will be saved without relevance assessment")
+    else:
+        # Define models for different stages
+        QUICK_ASSESSMENT_MODEL = "openai/gpt-4.1-nano"  # Cheaper model for initial filtering
+        DETAILED_ASSESSMENT_MODEL = AI_MODEL  # More expensive model for detailed analysis
         
-        # STAGE 1: Quick assessment with cheaper model
-        print(f"🔍 Quick relevance assessment...")
-        potentially_relevant, quick_tokens = quick_assess_relevance(
-            assessment_text, 
-            OPENROUTER_API_KEY, 
-            temperature=TEMPERATURE, 
-            model=QUICK_ASSESSMENT_MODEL
-        )
-        
-        if not potentially_relevant:
-            print(f"🚫 Not relevant (quick assessment): {title}")
-            return paper_data  # Return with default values (not relevant)
+        try:
+            # Use title and abstract for assessment
+            assessment_text = f"Title: {title}"
+            abstract = paper_data.get("abstract", "")
+            if abstract:
+                assessment_text += f"\n\nAbstract: {abstract}"
             
-        print(f"✓ Potentially relevant (quick assessment): {title}")
-        
-        # STAGE 2: Detailed assessment with more expensive model
-        print(f"🔍 Detailed relevance assessment...")
-        result, detailed_tokens = assess_relevance_and_tags(
-            assessment_text,
-            api_key=OPENROUTER_API_KEY,
-            temperature=TEMPERATURE,
-            model=DETAILED_ASSESSMENT_MODEL
-        )
-        
-        # Print token usage
-        print(f"📊 Token usage:")
-        print(f"  Quick assessment: {quick_tokens} tokens")
-        print(f"  Detailed assessment: {detailed_tokens} tokens")
-        print(f"  Total: {quick_tokens + detailed_tokens} tokens")
-        
-        # Calculate cost savings
-        quick_cost = estimate_cost(quick_tokens, QUICK_ASSESSMENT_MODEL)
-        detailed_cost = estimate_cost(detailed_tokens, DETAILED_ASSESSMENT_MODEL)
-        old_approach_cost = estimate_cost(quick_tokens + detailed_tokens, DETAILED_ASSESSMENT_MODEL)
-        savings = old_approach_cost - (quick_cost + detailed_cost)
-        
-        print(f"💰 Estimated cost savings: ${savings:.6f}")
-        
-        if result.get("relevant", False):
-            print(f"✅ Paper is relevant")
-            paper_data["tags"] = result.get("tags", [])
-            paper_data["relevance_score"] = result.get("relevance_score", 0)
-            paper_data["paper_type"] = result.get("paper_type", "Research Paper")
-            paper_data["summary"] = result.get("summary", [])
-            paper_data["modalities"] = result.get("modalities", [])
-            paper_data["code_repository"] = result.get("code_repository", "")
+            # STAGE 1: Quick assessment with cheaper model
+            print(f"🔍 Quick relevance assessment...")
+            potentially_relevant, quick_tokens = quick_assess_relevance(
+                assessment_text, 
+                OPENROUTER_API_KEY, 
+                temperature=TEMPERATURE, 
+                model=QUICK_ASSESSMENT_MODEL
+            )
             
-            print(f"📊 Relevance assessment:")
-            print(f"  Score: {paper_data['relevance_score']}")
-            print(f"  Tags: {', '.join(paper_data['tags'])}")
-            print(f"  Summary: {paper_data['summary']}")
-            print(f"  Modalities: {', '.join(paper_data['modalities'])}")
-            if paper_data["code_repository"]:
-                print(f"  Code Repository: {paper_data['code_repository']}")
-        else:
-            print(f"❌ Paper is not relevant (detailed assessment)")
-    except Exception as e:
-        print(f"❌ Error processing paper '{title}': {e}")
-        return None  # Return None to indicate processing failed
+            if not potentially_relevant:
+                print(f"🚫 Not relevant (quick assessment): {title}")
+                return paper_data  # Return with default values (not relevant)
+                
+            print(f"✓ Potentially relevant (quick assessment): {title}")
+            
+            # STAGE 2: Detailed assessment with more expensive model
+            print(f"🔍 Detailed relevance assessment...")
+            result, detailed_tokens = assess_relevance_and_tags(
+                assessment_text,
+                api_key=OPENROUTER_API_KEY,
+                temperature=TEMPERATURE,
+                model=DETAILED_ASSESSMENT_MODEL
+            )
+            
+            # Print token usage
+            print(f"📊 Token usage:")
+            print(f"  Quick assessment: {quick_tokens} tokens")
+            print(f"  Detailed assessment: {detailed_tokens} tokens")
+            print(f"  Total: {quick_tokens + detailed_tokens} tokens")
+            
+            # Calculate cost savings
+            quick_cost = estimate_cost(quick_tokens, QUICK_ASSESSMENT_MODEL)
+            detailed_cost = estimate_cost(detailed_tokens, DETAILED_ASSESSMENT_MODEL)
+            old_approach_cost = estimate_cost(quick_tokens + detailed_tokens, DETAILED_ASSESSMENT_MODEL)
+            savings = old_approach_cost - (quick_cost + detailed_cost)
+            
+            print(f"💰 Estimated cost savings: ${savings:.6f}")
+            
+            if result.get("relevant", False):
+                print(f"✅ Paper is relevant")
+                paper_data["tags"] = result.get("tags", [])
+                paper_data["relevance_score"] = result.get("relevance_score", 0)
+                paper_data["paper_type"] = result.get("paper_type", "Research Paper")
+                paper_data["summary"] = result.get("summary", [])
+                paper_data["modalities"] = result.get("modalities", [])
+                paper_data["code_repository"] = result.get("code_repository", "")
+                
+                print(f"📊 Relevance assessment:")
+                print(f"  Score: {paper_data['relevance_score']}")
+                print(f"  Tags: {', '.join(paper_data['tags'])}")
+                print(f"  Summary: {paper_data['summary']}")
+                print(f"  Modalities: {', '.join(paper_data['modalities'])}")
+                if paper_data["code_repository"]:
+                    print(f"  Code Repository: {paper_data['code_repository']}")
+            else:
+                print(f"❌ Paper is not relevant (detailed assessment)")
+        except Exception as e:
+            print(f"❌ Error processing paper '{title}': {e}")
+            return None  # Return None to indicate processing failed
     
     # Validate required fields
     required_fields = ["title", "url", "authors", "date"]
@@ -344,6 +355,8 @@ def main():
         description='Add a paper to the Qdrant database from a URL'
     )
     parser.add_argument('url', type=str, help='URL of the paper to add (arXiv or OpenAlex)')
+    parser.add_argument('--skip-relevance', action='store_true', 
+                        help='Skip relevance assessment and save paper directly if it does not exist')
     
     args = parser.parse_args()
     
@@ -378,7 +391,7 @@ def main():
         sys.exit(1)
     
     # Process the paper
-    processed_paper = process_paper(paper_data)
+    processed_paper = process_paper(paper_data, skip_relevance=args.skip_relevance)
     
     if not processed_paper:
         print(f"❌ Failed to process paper")
