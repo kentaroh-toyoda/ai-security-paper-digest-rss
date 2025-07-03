@@ -8,3 +8,5 @@ tabulate
 PyPDF2
 argparse
 pyyaml
+streamlit
+watchdog
