@@ -84,7 +84,7 @@ This will:
 ### Process ArXiv Papers
 
 ```bash
-python paper_read.py --url https://arxiv.org/abs/2411.14133
+python store_paper.py --url https://arxiv.org/abs/2411.14133
 ```
 
 This will:
@@ -155,7 +155,7 @@ This tool integrates with:
 
 - `search_papers.py`: Search OpenAlex for papers
 - `update_rss.py`: Update RSS feed from ArXiv
-- `paper_read.py`: Download and process individual ArXiv papers
+- `store_paper.py`: Download and process individual ArXiv papers
 - `db_chat.py`: Chat with stored papers
 - `check_rate_limit.py`: Check rate limit status
 - `test_rate_limiting.py`: Test rate limiting functionality

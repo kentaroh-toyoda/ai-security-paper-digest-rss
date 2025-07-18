@@ -56,11 +56,11 @@ pip install pyyaml
 
 ### 1. Process Papers for Attack Extraction
 
-First, ensure you have papers in your database using the existing `paper_read.py`:
+First, ensure you have papers in your database using the existing `store_paper.py`:
 
 ```bash
 # Add a paper to the database
-python paper_read.py --url https://arxiv.org/abs/2411.14133
+python store_paper.py --url https://arxiv.org/abs/2411.14133
 ```
 
 ### 2. Extract Attacks from Papers
@@ -124,7 +124,7 @@ promptfoo view
 ```
 Paper Processing Pipeline:
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────────┐
-│   paper_read.py │───▶│ attack_extractor │───▶│ promptfoo_generator │
+│  store_paper.py │───▶│ attack_extractor │───▶│ promptfoo_generator │
 │                 │    │                  │    │                     │
 │ • Download PDF  │    │ • Analyze content│    │ • Generate configs  │
 │ • Extract text  │    │ • Extract attacks│    │ • Create strategies │
@@ -362,9 +362,9 @@ The attack implementation system seamlessly integrates with your existing paper 
 ### Workflow Integration
 ```bash
 # Complete workflow example
-python paper_read.py --url https://arxiv.org/abs/2411.14133  # Process paper
-python attack_extractor.py --paper-id 2411.14133            # Extract attacks
-python promptfoo_generator.py --paper-id 2411.14133         # Generate config
+python store_paper.py --url https://arxiv.org/abs/2411.14133  # Process paper
+python attack_extractor.py --paper-id 2411.14133             # Extract attacks
+python promptfoo_generator.py --paper-id 2411.14133          # Generate config
 cd promptfoo_configs && promptfoo eval -c configs/2411_14133_config.yaml  # Test
 ```
 

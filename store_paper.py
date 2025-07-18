@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Paper Reader Script for ArXiv Papers
+Paper Storage Script for ArXiv Papers
 
 This script downloads and processes ArXiv papers, extracting their content,
 structuring it into sections, and storing it in Qdrant for future analysis.
 
 Usage:
-    python paper_read.py --url https://arxiv.org/abs/2411.14133
+    python store_paper.py --url https://arxiv.org/abs/2411.14133
 """
 
 import os
@@ -327,9 +327,9 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python paper_read.py --url https://arxiv.org/abs/2411.14133
-  python paper_read.py --url https://arxiv.org/pdf/2411.14133.pdf
-  python paper_read.py --url 2411.14133
+  python store_paper.py --url https://arxiv.org/abs/2411.14133
+  python store_paper.py --url https://arxiv.org/pdf/2411.14133.pdf
+  python store_paper.py --url 2411.14133
         """
     )
     

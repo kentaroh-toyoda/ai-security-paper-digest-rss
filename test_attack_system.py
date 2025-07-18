@@ -54,7 +54,7 @@ def test_complete_workflow(demo_paper_url=None):
         try:
             import subprocess
             result = subprocess.run([
-                "python", "paper_read.py", "--url", demo_paper_url
+                "python", "store_paper.py", "--url", demo_paper_url
             ], capture_output=True, text=True)
             
             if result.returncode == 0:

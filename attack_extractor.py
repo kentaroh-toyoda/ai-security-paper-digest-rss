@@ -278,7 +278,7 @@ Output as JSON with this structure:
         # Get paper from database
         paper_data = get_paper_by_url(client, url)
         if not paper_data:
-            print(f"❌ Paper {url} not found in database. Please run paper_read.py first.")
+            print(f"❌ Paper {url} not found in database. Please run store_paper.py first.")
             return None
         
         # Extract attacks
