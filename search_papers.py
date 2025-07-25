@@ -380,6 +380,8 @@ def main():
                         help='Maximum pages to fetch from OpenAlex (default: 10)')
     parser.add_argument('--non-interactive', action='store_true',
                         help='Run in non-interactive mode (for CI/CD)')
+    parser.add_argument('--no-related-keywords', action='store_true',
+                        help='Disable generation of related keywords (search only the main topic)')
 
     args = parser.parse_args()
 
@@ -404,14 +406,18 @@ def main():
                 query = default_query
                 print(f"Using default topic: {query}")
 
-    # Generate related keywords
-    print("\n🔍 Generating related keywords...")
-    related_keywords = generate_related_keywords(query, OPENROUTER_API_KEY)
-    if related_keywords:
-        print(f"Related keywords: {', '.join(related_keywords)}")
+    # Generate related keywords (if enabled)
+    related_keywords = []
+    if not args.no_related_keywords:
+        print("\n🔍 Generating related keywords...")
+        related_keywords = generate_related_keywords(query, OPENROUTER_API_KEY)
+        if related_keywords:
+            print(f"Related keywords: {', '.join(related_keywords)}")
+        else:
+            print("Failed to generate related keywords, using only the main query")
+            related_keywords = []
     else:
-        print("Failed to generate related keywords, using only the main query")
-        related_keywords = []
+        print("\n⏭️ Skipping related keyword generation (disabled)")
 
     # Get date range for search
     if args.start_date:
