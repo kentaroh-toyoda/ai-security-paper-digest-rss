@@ -15,7 +15,8 @@ jobs:
       QDRANT_API_URL: ${{ secrets.QDRANT_API_URL }}
       QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
       RSS_FEED_URL: ${{ secrets.RSS_FEED_URL }}
-      AI_MODEL: ${{ secrets.AI_MODEL || 'moonshotai/kimi-dev-72b:free' }}
+      DETAILED_ASSESSMENT_MODEL: ${{ secrets.DETAILED_ASSESSMENT_MODEL || 'moonshotai/kimi-dev-72b:free' }}
+      QUICK_ASSESSMENT_MODEL: ${{ secrets.QUICK_ASSESSMENT_MODEL || 'openai/gpt-4.1-nano' }}
       TEMPERATURE: ${{ secrets.TEMPERATURE || '0.1' }}
 
     steps:

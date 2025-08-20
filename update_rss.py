@@ -17,7 +17,8 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 QDRANT_API_URL = os.getenv("QDRANT_API_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 RSS_FEED_URL = os.getenv("RSS_FEED_URL")
-AI_MODEL = os.getenv("AI_MODEL", "openai/gpt-4.1-mini")
+DETAILED_ASSESSMENT_MODEL = os.getenv("DETAILED_ASSESSMENT_MODEL", "openai/gpt-4.1-mini")
+QUICK_ASSESSMENT_MODEL = os.getenv("QUICK_ASSESSMENT_MODEL", "openai/gpt-4.1-nano")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.1"))
 
 # Constants
@@ -163,7 +164,7 @@ def process_paper(paper: dict) -> dict:
             text=text,
             api_key=OPENROUTER_API_KEY,
             temperature=TEMPERATURE,
-            model=AI_MODEL
+            model=DETAILED_ASSESSMENT_MODEL
         )
 
     if result.get("relevant", False):
@@ -187,9 +188,8 @@ def process_papers(raw_papers):
     quick_assessment_tokens = 0
     detailed_assessment_tokens = 0
     
-    # Define models for different stages
-    QUICK_ASSESSMENT_MODEL = "openai/gpt-4.1-nano"  # Cheaper model for initial filtering
-    DETAILED_ASSESSMENT_MODEL = AI_MODEL  # More expensive model for detailed analysis
+    # Define models for different stages - using environment variables
+    # These variables are defined in .env and loaded at the top of the file
     
     # Define delay between detailed assessments to avoid rate limiting
     # Only apply delay for models subject to free tier limit (like kimi)
@@ -317,7 +317,7 @@ def estimate_cost(tokens, model=None):
         float: Estimated cost in USD
     """
     if model is None:
-        model = AI_MODEL
+        model = DETAILED_ASSESSMENT_MODEL
 
     # Pricing per 1K tokens (input/output combined for simplicity)
     # Based on OpenRouter pricing as of 2024
@@ -330,6 +330,9 @@ def estimate_cost(tokens, model=None):
         "openai/gpt-4.1": 0.01,  # $10.00 per 1M tokens
         "openai/gpt-4.1-mini": 0.00015,  # $0.15 per 1M tokens
         "openai/gpt-4.1-nano": 0.000075,  # $0.075 per 1M tokens
+        "openai/gpt-5": 0.01,  # $10.00 per 1M tokens
+        "openai/gpt-5-mini": 0.00015,  # $0.15 per 1M tokens
+        "openai/gpt-5-nano": 0.000075,  # $0.075 per 1M tokens
 
         # Anthropic models
         "anthropic/claude-3-5-sonnet": 0.003,  # $3.00 per 1M tokens
@@ -378,9 +381,9 @@ def main():
     print(f"📝 Generating RSS feed with {len(arxiv_results)} papers...")
     build_rss_feed(arxiv_results)
 
-    cost = estimate_cost(total_tokens, AI_MODEL)
+    cost = estimate_cost(total_tokens, DETAILED_ASSESSMENT_MODEL)
     print(
-        f"✅ Done. Total tokens used: {total_tokens}, Estimated cost: ${cost:.4f} (using {AI_MODEL})")
+        f"✅ Done. Total tokens used: {total_tokens}, Estimated cost: ${cost:.4f} (using {DETAILED_ASSESSMENT_MODEL})")
 
 
 if __name__ == "__main__":
