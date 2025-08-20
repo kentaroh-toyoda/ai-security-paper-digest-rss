@@ -1,21 +1,25 @@
 # Paper Digest - AI Security Research Tool
 
-This is a comprehensive tool for discovering, analyzing, and managing AI security research papers. It uses OpenRouter for AI processing and Qdrant for vector storage.
+This is a comprehensive tool for discovering the latest AI security research papers from ArXiv. 
 
-## RSS Feed
+## Overview
 
-Subscribe to the AI Security Paper Digest RSS feed: [https://kentaroh-toyoda.github.io/ai-security-paper-digest-rss/rss.xml](https://kentaroh-toyoda.github.io/ai-security-paper-digest-rss/rss.xml)
+Every day at 6 AM (SGT), this tool automatically fetches new AI security-related papers from ArXiv, analyzes them using a two-stage AI assessment process, and publishes relevant papers to an RSS feed [https://kentaroh-toyoda.github.io/ai-security-paper-digest-rss/rss.xml](https://kentaroh-toyoda.github.io/ai-security-paper-digest-rss/rss.xml).
+
+The tool focuses specifically on papers related to AI security, safety, and red teaming, including topics like LLM jailbreaking, prompt injection, adversarial attacks, model extraction, data poisoning, privacy attacks, alignment, robustness, and safety evaluation.
 
 ## Features
 
 - **Paper Discovery**: Fetch and process papers from ArXiv
 - **Two-Stage Assessment**: Cost-efficient filtering with a quick assessment followed by detailed analysis
 - **Intelligent Filtering**: AI-powered relevance assessment and tagging
-- **Vector Storage**: Store and search papers using Qdrant
 - **RSS Feed Generation**: Generate RSS feeds of relevant papers
-- **Cost Optimization**: Efficient use of AI models to minimize costs
+- **Vector Storage**: Store and search papers using Qdrant
+- **Automated Workflow**: Runs daily via GitHub Actions
 
 ## Setup
+
+The RSS feed is available at [https://kentaroh-toyoda.github.io/ai-security-paper-digest-rss/rss.xml](https://kentaroh-toyoda.github.io/ai-security-paper-digest-rss/rss.xml), but you may want to try with other research topics or system prompts. The following is the step-by-step to replicate the service.
 
 1. Install the required dependencies:
 
@@ -45,7 +49,7 @@ python update_rss.py
 
 This will:
 
-1. Fetch recent papers from ArXiv AI feeds
+1. Fetch recent papers from ArXiv AI feeds (cs.AI, cs.LG, cs.CL, cs.CV)
 2. Perform a quick initial assessment using a cost-efficient model
 3. Perform detailed assessment on promising papers using a more powerful model
 4. Store relevant papers in Qdrant
@@ -63,9 +67,11 @@ This tool integrates with:
 - **OpenRouter**: For AI processing and relevance assessment
 - **ArXiv**: For preprint discovery
 - **Qdrant**: For vector storage and retrieval
+- **GitHub Actions**: For automated daily execution
 
 ## Files Overview
 
 - `update_rss.py`: Update RSS feed from ArXiv with two-stage assessment
 - `utils/llm.py`: AI processing and rate limiting
 - `utils/qdrant.py`: Vector database operations
+- `.github/workflows/update_rss.yml`: GitHub Actions workflow for daily execution
