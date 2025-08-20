@@ -2,6 +2,10 @@
 
 This is a comprehensive tool for discovering, analyzing, and managing AI security research papers. It uses OpenRouter for AI processing and Qdrant for vector storage.
 
+## RSS Feed
+
+Subscribe to the AI Security Paper Digest RSS feed: [https://kentaroh-toyoda.github.io/ai-security-paper-digest-rss/rss.xml](https://kentaroh-toyoda.github.io/ai-security-paper-digest-rss/rss.xml)
+
 ## Features
 
 - **Paper Discovery**: Fetch and process papers from ArXiv
@@ -52,24 +56,6 @@ This will:
 - **Detailed Analysis**: Only papers that pass initial filtering are processed with a more expensive model
 - **Cost Savings**: Detailed cost breakdown is provided in the output
 
-### Process ArXiv Papers
-
-```bash
-python store_paper.py --url https://arxiv.org/abs/2411.14133
-```
-
-This will:
-
-1. Download the PDF from ArXiv
-2. Extract and structure the paper content into sections
-3. **Display estimated cost** for AI processing operations
-4. Store the structured content in Qdrant for future analysis
-
-**Cost Estimation**: The script shows estimated costs for each AI operation:
-- **Free models** (gpt-4.1-nano): $0.00
-- **Cost-effective** (gpt-4.1-mini): ~$0.004 per paper
-- **High-quality** (gpt-4o): ~$0.068 per paper
-
 ## Integration with Existing System
 
 This tool integrates with:
@@ -81,6 +67,5 @@ This tool integrates with:
 ## Files Overview
 
 - `update_rss.py`: Update RSS feed from ArXiv with two-stage assessment
-- `store_paper.py`: Download and process individual ArXiv papers
 - `utils/llm.py`: AI processing and rate limiting
 - `utils/qdrant.py`: Vector database operations
