@@ -17,8 +17,10 @@ OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 QDRANT_API_URL = os.getenv("QDRANT_API_URL")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 RSS_FEED_URL = os.getenv("RSS_FEED_URL")
-DETAILED_ASSESSMENT_MODEL = os.getenv("DETAILED_ASSESSMENT_MODEL", "openai/gpt-4.1-mini")
-QUICK_ASSESSMENT_MODEL = os.getenv("QUICK_ASSESSMENT_MODEL", "openai/gpt-4.1-nano")
+DETAILED_ASSESSMENT_MODEL = os.getenv(
+    "DETAILED_ASSESSMENT_MODEL", "openai/gpt-4.1-mini")
+QUICK_ASSESSMENT_MODEL = os.getenv(
+    "QUICK_ASSESSMENT_MODEL", "openai/gpt-4.1-nano")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.1"))
 
 # Constants
@@ -61,7 +63,7 @@ def build_rss_feed(relevant_papers):
     fg = FeedGenerator()
     fg.title("AI Security Paper Digest")
     fg.link(href=RSS_FEED_URL)
-    fg.description("Curated papers on AI security from OpenAlex and ArXiv")
+    fg.description("Curated papers on AI security from ArXiv")
 
     for paper in relevant_papers:
         fe = fg.add_entry()
@@ -91,8 +93,8 @@ def build_rss_feed(relevant_papers):
         description.append("<ul>")
         if "authors" in paper:
             description.append(f"<li>Authors: {paper['authors']}</li>")
-        if "tags" in paper:
-            description.append(f"<li>Tags: {paper['tags']}</li>")
+        if "topics" in paper:
+            description.append(f"<li>Tags: {paper['topics']}</li>")
         if "relevance" in paper:
             description.append(
                 f"<li>Relevance Score: {paper['relevance']}/5</li>")
@@ -106,15 +108,15 @@ def build_rss_feed(relevant_papers):
 
         # Handle date conversion more robustly
         try:
-            if isinstance(paper["date"], str):
+            if isinstance(paper["published_date"], str):
                 # Ensure the date string is in ISO format
-                if "T" not in paper["date"]:  # If it's just a date without time
-                    paper["date"] = f"{paper['date']}T00:00:00+00:00"
+                if "T" not in paper["published_date"]:  # If it's just a date without time
+                    paper["published_date"] = f"{paper['published_date']}T00:00:00+00:00"
                 pub_date = datetime.fromisoformat(
-                    paper["date"].replace("Z", "+00:00"))
+                    paper["published_date"].replace("Z", "+00:00"))
             else:
                 # If date is already a datetime object, use it directly
-                pub_date = paper["date"]
+                pub_date = paper["published_date"]
             fe.pubDate(pub_date.astimezone(timezone.utc))
         except (ValueError, TypeError) as e:
             print(
@@ -133,31 +135,32 @@ def process_paper(paper: dict) -> dict:
         "title": paper.get("title", ""),
         "abstract": paper.get("abstract", ""),
         "url": paper.get("url", ""),
-        "date": paper.get("date", ""),
+        "published_date": paper.get("date", ""),  # Renamed from 'date'
         "authors": paper.get("authors", ""),
         "source": paper.get("source", ""),
-        "arxiv_id": paper.get("arxiv_id", ""),
+        "paper_id": paper.get("arxiv_id", ""),  # Renamed from 'arxiv_id'
         "cited_by_count": paper.get("cited_by_count", 0),
         "publication_type": paper.get("publication_type", ""),
         "code_repository": paper.get("code_repository", ""),
         "is_relevant": False,
-        "tags": [],
+        "topics": [],  # Renamed from 'tags'
         "relevance_score": 0,
         "relevance_reason": "",
         "paper_type": "Other",
-        "modalities": []
+        "modalities": [],
+        "star": False  # New field, default to False
     }
 
     # Two-stage assessment process is now handled in process_papers
     # This function now assumes the paper has already passed the quick assessment
-    
+
     # Get the text to assess
     text = f"Title: {paper['title']}\n\nAbstract: {paper['abstract']}"
-    
+
     # Use the result from the detailed assessment that was already done in process_papers
     # This avoids duplicate API calls
     result = paper.get("_assessment_result", None)
-    
+
     # If we don't have a result (e.g., when called directly), perform the assessment
     if result is None:
         result, _ = assess_relevance_and_tags(
@@ -169,7 +172,7 @@ def process_paper(paper: dict) -> dict:
 
     if result.get("relevant", False):
         paper_data["is_relevant"] = True
-        paper_data["tags"] = result.get("tags", [])
+        paper_data["topics"] = result.get("tags", [])
         paper_data["relevance_score"] = result.get("relevance_score", 0)
         paper_data["relevance_reason"] = result.get("reason", "")
         paper_data["paper_type"] = result.get("paper_type", "Research Paper")
@@ -183,25 +186,21 @@ def process_papers(raw_papers):
     global total_tokens
     relevant = []
     current_date = datetime.now(timezone.utc).date()
-    
+
     # Track token usage for different models
     quick_assessment_tokens = 0
     detailed_assessment_tokens = 0
-    
+
     # Define models for different stages - using environment variables
     # These variables are defined in .env and loaded at the top of the file
-    
+
     # Define delay between detailed assessments to avoid rate limiting
     # Only apply delay for models subject to free tier limit (like kimi)
     # With 20 requests per minute allowed, we can safely use a 1.5 second delay (60/20 = 3, but we can be a bit more aggressive)
     DETAILED_ASSESSMENT_DELAY = 1.5  # seconds between requests
-    
+
     # Check if the detailed assessment model is subject to rate limiting
     is_free_tier_model = DETAILED_ASSESSMENT_MODEL.endswith(':free')
-    
-    # Check rate limit status before starting
-    print("\n📊 Checking rate limit status...")
-    check_rate_limit_status()
 
     for paper in raw_papers:
         title = paper.title if hasattr(paper, 'title') else ""
@@ -222,29 +221,30 @@ def process_papers(raw_papers):
             continue
 
         fulltext = f"Title: {title}\nAbstract: {abstract}\nURL: {url}"
-        
+
         # STAGE 1: Quick assessment with cheaper model
         print(f"🔍 Quick relevance assessment...")
         potentially_relevant, quick_tokens = quick_assess_relevance(
             fulltext, OPENROUTER_API_KEY, temperature=TEMPERATURE, model=QUICK_ASSESSMENT_MODEL)
         quick_assessment_tokens += quick_tokens
-        
+
         if not potentially_relevant:
             print(f"🚫 Not relevant (quick assessment): {title}")
             continue
-            
+
         print(f"✓ Potentially relevant (quick assessment): {title}")
-        
+
         # STAGE 2: Detailed assessment with more expensive model
         print(f"🔍 Detailed relevance assessment...")
-        
+
         # Add delay between detailed assessments if using a free tier model
         # This helps avoid hitting the rate limit (20 requests/60 seconds)
         if is_free_tier_model and len(relevant) > 0:
             delay_time = DETAILED_ASSESSMENT_DELAY
-            print(f"⏱️ Adding delay of {delay_time}s before detailed assessment to avoid rate limiting...")
+            print(
+                f"⏱️ Adding delay of {delay_time}s before detailed assessment to avoid rate limiting...")
             time.sleep(delay_time)
-            
+
         result, detailed_tokens = assess_relevance_and_tags(
             fulltext, OPENROUTER_API_KEY, temperature=TEMPERATURE, model=DETAILED_ASSESSMENT_MODEL)
         detailed_assessment_tokens += detailed_tokens
@@ -278,30 +278,35 @@ def process_papers(raw_papers):
         insert_paper(qdrant_client, row)
         relevant.append(row)
         # Rate limiting is now handled automatically by the new system
-    
+
     # Add both token counts to the total
     total_tokens = quick_assessment_tokens + detailed_assessment_tokens
-    
+
     # Print token usage breakdown
     print(f"\n📊 Token usage breakdown:")
     print(f"  Quick assessment: {quick_assessment_tokens} tokens")
     print(f"  Detailed assessment: {detailed_assessment_tokens} tokens")
     print(f"  Total: {total_tokens} tokens")
-    
+
     # Calculate cost savings
     quick_cost = estimate_cost(quick_assessment_tokens, QUICK_ASSESSMENT_MODEL)
-    detailed_cost = estimate_cost(detailed_assessment_tokens, DETAILED_ASSESSMENT_MODEL)
+    detailed_cost = estimate_cost(
+        detailed_assessment_tokens, DETAILED_ASSESSMENT_MODEL)
     total_cost = quick_cost + detailed_cost
-    
+
     # Estimate what it would have cost without the two-stage approach
-    old_approach_cost = estimate_cost(quick_assessment_tokens + detailed_assessment_tokens, DETAILED_ASSESSMENT_MODEL)
+    old_approach_cost = estimate_cost(
+        quick_assessment_tokens + detailed_assessment_tokens, DETAILED_ASSESSMENT_MODEL)
     savings = old_approach_cost - total_cost
-    
+
     print(f"💰 Cost breakdown:")
-    print(f"  Quick assessment: ${quick_cost:.4f} (using {QUICK_ASSESSMENT_MODEL})")
-    print(f"  Detailed assessment: ${detailed_cost:.4f} (using {DETAILED_ASSESSMENT_MODEL})")
+    print(
+        f"  Quick assessment: ${quick_cost:.4f} (using {QUICK_ASSESSMENT_MODEL})")
+    print(
+        f"  Detailed assessment: ${detailed_cost:.4f} (using {DETAILED_ASSESSMENT_MODEL})")
     print(f"  Total: ${total_cost:.4f}")
-    print(f"  Estimated savings: ${savings:.4f} (compared to single-stage approach)")
+    print(
+        f"  Estimated savings: ${savings:.4f} (compared to single-stage approach)")
 
     return relevant
 
@@ -370,7 +375,7 @@ def estimate_cost(tokens, model=None):
 def main():
     # Update daily limit for paid users
     update_daily_limit_for_paid_user()
-    
+
     print("🔄 Fetching ArXiv RSS feeds...")
     arxiv_papers = fetch_arxiv()
     print(f"📚 Found {len(arxiv_papers)} papers from ArXiv")

@@ -204,38 +204,59 @@ def paper_exists(client: QdrantClient, paper_url: str) -> bool:
     return len(response[0]) > 0
 
 
-def insert_paper(client: QdrantClient, paper_data: Dict[str, Any]) -> bool:
-    """Insert a paper into Qdrant."""
-    try:
-        # Convert date string to datetime if needed
-        if isinstance(paper_data.get("date"), str):
-            paper_data["date"] = datetime.fromisoformat(
-                paper_data["date"].replace("Z", "+00:00"))
 
-        # Convert authors string to array if it's not already
-        if isinstance(paper_data.get("authors"), str):
-            paper_data["authors"] = [
-                author.strip() for author in paper_data["authors"].split(",") if author.strip()]
+
+
+def insert_paper(client: QdrantClient, paper_data: Dict[str, Any]) -> bool:
+    """Insert a paper into Qdrant with the new schema."""
+    try:
+        # Prepare metadata payload according to the new schema
+        metadata = {
+            "paper_id": paper_data.get("paper_id", paper_data.get("arxiv_id", "")),  # Use paper_id if available, fallback to arxiv_id
+            "title": paper_data.get("title", ""),
+            "authors": paper_data.get("authors", []),
+            "published_date": paper_data.get("published_date", paper_data.get("date", "")),
+            "topics": paper_data.get("topics", paper_data.get("tags", [])),
+            "summary": paper_data.get("summary", []),
+            "paper_type": paper_data.get("paper_type", ""),
+            "modalities": paper_data.get("modalities", []),
+            "embedding_source": ["title", "abstract"],
+            "embedding_size": 384,
+            "embedding_model_version": "sentence-transformers/all-MiniLM-L6-v2",
+            "embedding_distance": "cosine",
+            "source": paper_data.get("source", ""),
+            "url": paper_data.get("url", ""),
+            "code_repository": paper_data.get("code_repository", ""),
+            "star": paper_data.get("star", False)
+        }
+
+        # Ensure authors is a list
+        if isinstance(metadata["authors"], str):
+            metadata["authors"] = [
+                author.strip() for author in metadata["authors"].split(",") if author.strip()]
 
         # Generate text for embedding
         embedding_text = f"Title: {paper_data.get('title', '')}\n\nAbstract: {paper_data.get('abstract', '')}"
-        
+
         # Generate embedding
         from utils.llm import generate_embeddings
         vector = generate_embeddings(embedding_text)
 
-        # Create point with actual embedding vector
+        # Create point with the new schema
         point = PointStruct(
             id=generate_point_id(paper_data["url"]),  # Generate UUID from URL
-            vector=vector,  # Actual embedding vector
-            payload=paper_data
+            vector=vector,  # Embedding vector
+            payload={
+                "embedding": vector,  # Include the embedding in the payload as per schema
+                "metadata": metadata
+            }
         )
 
         client.upsert(
             collection_name=COLLECTION_NAME,
             points=[point]
         )
-        print(f"✅ Added to Qdrant with embeddings: {paper_data.get('title', 'Unknown paper')}")
+        print(f"✅ Added to Qdrant with new schema: {paper_data.get('title', 'Unknown paper')}")
         return True
 
     except Exception as e:
