@@ -26,7 +26,7 @@ def init_qdrant_client() -> QdrantClient:
 
 
 def ensure_collection_exists(client: QdrantClient) -> None:
-    """Ensure the collection exists in Qdrant."""
+    """Ensure the collection exists in Qdrant with updated schema indexes."""
     try:
         # Create collection if it doesn't exist
         collections = client.get_collections().collections
@@ -42,139 +42,107 @@ def ensure_collection_exists(client: QdrantClient) -> None:
             )
             print(f"Created collection: {COLLECTION_NAME}")
 
-            # Create index for title field
+            # Create indexes for metadata fields with new schema
             client.create_payload_index(
                 collection_name=COLLECTION_NAME,
-                field_name="title",
+                field_name="metadata.title",
                 field_schema="keyword"
             )
-            print("Created index for title field")
+            print("Created index for metadata.title field")
 
-            # Create index for url field
             client.create_payload_index(
                 collection_name=COLLECTION_NAME,
-                field_name="url",
+                field_name="metadata.url",
                 field_schema="keyword"
             )
-            print("Created index for url field")
+            print("Created index for metadata.url field")
 
-            # Create index for authors field
             client.create_payload_index(
                 collection_name=COLLECTION_NAME,
-                field_name="authors",
+                field_name="metadata.authors",
                 field_schema="keyword"
             )
-            print("Created index for authors field")
+            print("Created index for metadata.authors field")
 
-            # Create index for modalities field
             client.create_payload_index(
                 collection_name=COLLECTION_NAME,
-                field_name="modalities",
+                field_name="metadata.topics",
                 field_schema="keyword"
             )
-            print("Created index for modalities field")
+            print("Created index for metadata.topics field")
 
-            # Create index for code_repository field
             client.create_payload_index(
                 collection_name=COLLECTION_NAME,
-                field_name="code_repository",
+                field_name="metadata.modalities",
                 field_schema="keyword"
             )
-            print("Created index for code_repository field")
+            print("Created index for metadata.modalities field")
 
-            # Create index for relevance_score field
             client.create_payload_index(
                 collection_name=COLLECTION_NAME,
-                field_name="relevance_score",
+                field_name="metadata.star",
+                field_schema="bool"
+            )
+            print("Created index for metadata.star field")
+
+            client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name="metadata.paper_type",
+                field_schema="keyword"
+            )
+            print("Created index for metadata.paper_type field")
+
+            client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name="metadata.source",
+                field_schema="keyword"
+            )
+            print("Created index for metadata.source field")
+
+            client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name="metadata.published_date",
+                field_schema="datetime"
+            )
+            print("Created index for metadata.published_date field")
+
+            client.create_payload_index(
+                collection_name=COLLECTION_NAME,
+                field_name="metadata.relevance_score",
                 field_schema="integer"
             )
-            print("Created index for relevance_score field")
+            print("Created index for metadata.relevance_score field")
+
         else:
             print(f"Collection {COLLECTION_NAME} already exists")
 
-            # Create index for title field if it doesn't exist
-            try:
-                client.create_payload_index(
-                    collection_name=COLLECTION_NAME,
-                    field_name="title",
-                    field_schema="keyword"
-                )
-                print("Created index for title field")
-            except Exception as e:
-                if "already exists" in str(e).lower():
-                    print("Title index already exists")
-                else:
-                    raise
+            # Create indexes for metadata fields if they don't exist
+            index_configs = [
+                ("metadata.title", "keyword"),
+                ("metadata.url", "keyword"),
+                ("metadata.authors", "keyword"),
+                ("metadata.topics", "keyword"),
+                ("metadata.modalities", "keyword"),
+                ("metadata.star", "bool"),
+                ("metadata.paper_type", "keyword"),
+                ("metadata.source", "keyword"),
+                ("metadata.published_date", "datetime"),
+                ("metadata.relevance_score", "integer")
+            ]
 
-            # Create index for url field if it doesn't exist
-            try:
-                client.create_payload_index(
-                    collection_name=COLLECTION_NAME,
-                    field_name="url",
-                    field_schema="keyword"
-                )
-                print("Created index for url field")
-            except Exception as e:
-                if "already exists" in str(e).lower():
-                    print("URL index already exists")
-                else:
-                    raise
-
-            # Create index for authors field if it doesn't exist
-            try:
-                client.create_payload_index(
-                    collection_name=COLLECTION_NAME,
-                    field_name="authors",
-                    field_schema="keyword"
-                )
-                print("Created index for authors field")
-            except Exception as e:
-                if "already exists" in str(e).lower():
-                    print("Authors index already exists")
-                else:
-                    raise
-
-            # Create index for modalities field if it doesn't exist
-            try:
-                client.create_payload_index(
-                    collection_name=COLLECTION_NAME,
-                    field_name="modalities",
-                    field_schema="keyword"
-                )
-                print("Created index for modalities field")
-            except Exception as e:
-                if "already exists" in str(e).lower():
-                    print("Modalities index already exists")
-                else:
-                    raise
-
-            # Create index for code_repository field if it doesn't exist
-            try:
-                client.create_payload_index(
-                    collection_name=COLLECTION_NAME,
-                    field_name="code_repository",
-                    field_schema="keyword"
-                )
-                print("Created index for code_repository field")
-            except Exception as e:
-                if "already exists" in str(e).lower():
-                    print("Code repository index already exists")
-                else:
-                    raise
-
-            # Create index for relevance_score field if it doesn't exist
-            try:
-                client.create_payload_index(
-                    collection_name=COLLECTION_NAME,
-                    field_name="relevance_score",
-                    field_schema="integer"
-                )
-                print("Created index for relevance_score field")
-            except Exception as e:
-                if "already exists" in str(e).lower():
-                    print("Relevance score index already exists")
-                else:
-                    raise
+            for field_name, field_schema in index_configs:
+                try:
+                    client.create_payload_index(
+                        collection_name=COLLECTION_NAME,
+                        field_name=field_name,
+                        field_schema=field_schema
+                    )
+                    print(f"Created index for {field_name} field")
+                except Exception as e:
+                    if "already exists" in str(e).lower():
+                        print(f"{field_name} index already exists")
+                    else:
+                        raise
 
     except Exception as e:
         print(f"Error ensuring collection exists: {str(e)}")
@@ -194,7 +162,7 @@ def paper_exists(client: QdrantClient, paper_url: str) -> bool:
         scroll_filter=models.Filter(
             must=[
                 models.FieldCondition(
-                    key="url",
+                    key="metadata.url",
                     match=models.MatchValue(value=paper_url)
                 )
             ]
