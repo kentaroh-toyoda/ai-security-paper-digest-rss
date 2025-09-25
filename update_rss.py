@@ -24,11 +24,12 @@ QUICK_ASSESSMENT_MODEL = os.getenv(
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.1"))
 
 # Constants
-ARXIV_FEEDS = [
+FEEDS = [
     "https://export.arxiv.org/rss/cs.AI",
     "https://export.arxiv.org/rss/cs.LG",
     "https://export.arxiv.org/rss/cs.CL",
     "https://export.arxiv.org/rss/cs.CV",
+    "https://aclanthology.org/papers/index.xml",
 ]
 
 # Token usage tracking
@@ -39,12 +40,12 @@ qdrant_client = init_qdrant_client()
 ensure_collection_exists(qdrant_client)
 
 
-def fetch_arxiv():
+def fetch_papers():
     entries = []
     cutoff_time = datetime.now(timezone.utc) - timedelta(days=1)
-    print(f"\n🔍 Fetching ArXiv papers since: {cutoff_time.isoformat()}")
+    print(f"\n🔍 Fetching papers since: {cutoff_time.isoformat()}")
 
-    for feed_url in ARXIV_FEEDS:
+    for feed_url in FEEDS:
         parsed = feedparser.parse(feed_url)
         for entry in parsed.entries:
             # Parse the published date
@@ -63,7 +64,7 @@ def build_rss_feed(relevant_papers):
     fg = FeedGenerator()
     fg.title("AI Security Paper Digest")
     fg.link(href=RSS_FEED_URL)
-    fg.description("Curated papers on AI security from ArXiv")
+    fg.description("Curated papers on AI security from ArXiv and ACL")
 
     for paper in relevant_papers:
         fe = fg.add_entry()
@@ -206,9 +207,31 @@ def process_papers(raw_papers):
         title = paper.title if hasattr(paper, 'title') else ""
         url = paper.link if hasattr(paper, 'link') else ""
         abstract = paper.summary if hasattr(paper, 'summary') else ""
-        authors = [author.strip() for author in paper.author.split(
-            ",")] if hasattr(paper, 'author') else ["Unknown"]
         date = datetime.now(timezone.utc).date().isoformat()
+
+        # Determine source and parse metadata accordingly
+        if "aclanthology.org" in url:
+            source = "acl"
+            # For ACL, authors are in the description
+            description = paper.summary if hasattr(paper, 'summary') else ""
+            # Extract authors from description (format: "Author1 and Author2 in Proceedings...")
+            if " in " in description:
+                authors_part = description.split(" in ")[0]
+                authors = [author.strip() for author in authors_part.split(" and ")]
+            else:
+                authors = ["Unknown"]
+            paper_id = url.split("/")[-1] if url else ""
+            publication_type = "conference"
+            # For ACL, use title only for assessment
+            assessment_text = f"Title: {title}"
+        else:
+            source = "arxiv"
+            authors = [author.strip() for author in paper.author.split(
+                ",")] if hasattr(paper, 'author') else ["Unknown"]
+            paper_id = url.split("/")[-1] if "arxiv.org" in url else ""
+            publication_type = "preprint"
+            # For ArXiv, use title + abstract
+            assessment_text = f"Title: {title}\n\nAbstract: {abstract}"
 
         if not title or not url:
             continue
@@ -246,7 +269,7 @@ def process_papers(raw_papers):
             time.sleep(delay_time)
 
         result, detailed_tokens = assess_relevance_and_tags(
-            fulltext, OPENROUTER_API_KEY, temperature=TEMPERATURE, model=DETAILED_ASSESSMENT_MODEL)
+            assessment_text, OPENROUTER_API_KEY, temperature=TEMPERATURE, model=DETAILED_ASSESSMENT_MODEL)
         detailed_assessment_tokens += detailed_tokens
 
         if not result["relevant"]:
@@ -262,10 +285,10 @@ def process_papers(raw_papers):
             "url": url,
             "authors": authors,
             "date": date,
-            "source": "arxiv",
-            "arxiv_id": url.split("/")[-1] if "arxiv.org" in url else "",
+            "source": source,
+            "arxiv_id": paper_id,
             "cited_by_count": 0,
-            "publication_type": "preprint",
+            "publication_type": publication_type,
             "code_repository": ""
         }
 
@@ -376,15 +399,15 @@ def main():
     # Update daily limit for paid users
     update_daily_limit_for_paid_user()
 
-    print("🔄 Fetching ArXiv RSS feeds...")
-    arxiv_papers = fetch_arxiv()
-    print(f"📚 Found {len(arxiv_papers)} papers from ArXiv")
+    print("🔄 Fetching RSS feeds...")
+    papers = fetch_papers()
+    print(f"📚 Found {len(papers)} papers")
 
-    print("🧠 Filtering ArXiv papers...")
-    arxiv_results = process_papers(arxiv_papers)
+    print("🧠 Filtering papers...")
+    results = process_papers(papers)
 
-    print(f"📝 Generating RSS feed with {len(arxiv_results)} papers...")
-    build_rss_feed(arxiv_results)
+    print(f"📝 Generating RSS feed with {len(results)} papers...")
+    build_rss_feed(results)
 
     cost = estimate_cost(total_tokens, DETAILED_ASSESSMENT_MODEL)
     print(
