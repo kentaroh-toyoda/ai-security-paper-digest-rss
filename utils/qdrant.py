@@ -35,10 +35,12 @@ def ensure_collection_exists(client: QdrantClient) -> None:
         if COLLECTION_NAME not in collection_names:
             client.create_collection(
                 collection_name=COLLECTION_NAME,
-                vectors_config=models.VectorParams(
-                    size=384,  # sentence-transformers/all-MiniLM-L6-v2 dimension
-                    distance=models.Distance.COSINE
-                )
+                vectors_config={
+                    "default": models.VectorParams(
+                        size=384,  # sentence-transformers/all-MiniLM-L6-v2 dimension
+                        distance=models.Distance.COSINE
+                    )
+                }
             )
             print(f"Created collection: {COLLECTION_NAME}")
 
@@ -213,7 +215,7 @@ def insert_paper(client: QdrantClient, paper_data: Dict[str, Any]) -> bool:
         # Create point with the new schema
         point = PointStruct(
             id=generate_point_id(paper_data["url"]),  # Generate UUID from URL
-            vector=vector,  # Embedding vector
+            vector={"default": vector},  # Embedding vector with named vector
             payload={
                 "embedding": vector,  # Include the embedding in the payload as per schema
                 "metadata": metadata
