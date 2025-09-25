@@ -368,7 +368,10 @@ def create_openrouter_client(api_key: str):
 
 
 def clean_and_extract_json(response_text: str) -> dict:
-    """Clean response text and extract JSON, handling thinking tokens and other formatting."""
+    """Clean response text and extract JSON, handling thinking tokens and other formatting.
+
+    Returns a default dict with 'relevant': False if JSON parsing fails.
+    """
 
     # Remove thinking tokens and other common formatting
     cleaned = response_text
@@ -410,7 +413,7 @@ def clean_and_extract_json(response_text: str) -> dict:
             print(f"❌ Failed to parse extracted JSON: {json_str}")
             print(f"❌ JSON parsing error: {e}")
             print(f"❌ Original response: {response_text[:500]}...")
-            exit(1)
+            return {"relevant": False}
 
     # Try a more aggressive JSON extraction
     json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
@@ -423,7 +426,7 @@ def clean_and_extract_json(response_text: str) -> dict:
             print(f"❌ Failed to parse extracted JSON: {json_str}")
             print(f"❌ JSON parsing error: {e}")
             print(f"❌ Original response: {response_text[:500]}...")
-            exit(1)
+            return {"relevant": False}
 
     # Fallback: try to evaluate as Python dict (less safe but sometimes works)
     try:
@@ -436,13 +439,13 @@ def clean_and_extract_json(response_text: str) -> dict:
         print(f"❌ Failed to parse extracted JSON: {json_only}")
         print(f"❌ Evaluation error: {e}")
         print(f"❌ Original response: {response_text[:500]}...")
-        exit(1)
+        return {"relevant": False}
 
-    # If all else fails, exit with error
+    # If all else fails, return default
     print(
         f"❌ Could not extract valid JSON from response: {response_text[:500]}...")
     print(f"❌ Cleaned response: {cleaned[:500]}...")
-    exit(1)
+    return {"relevant": False}
 
 
 @cached_llm_call
@@ -453,7 +456,7 @@ def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1,
     # Optimized prompt to reduce token usage while maintaining essential instructions
     system_prompt = """Assess if this paper directly addresses AI security, safety, or red teaming.
 
-Relevant topics: LLM red teaming, jailbreaking, prompt injection, adversarial prompting, model extraction, 
+Relevant topics: LLM red teaming, jailbreaking, prompt injection, adversarial prompting, model extraction,
 data poisoning, privacy attacks, alignment, robustness, safety evaluation, security standards.
 
 NOT relevant: General AI/ML papers, AI applications without security focus, AI ethics without security aspects.
@@ -468,8 +471,7 @@ If relevant (score ≥3/5):
 
 If not relevant: {"relevant": false}
 
-Output JSON: {"relevant": true/false, "summary": [...], "tags": [...], "relevance_score": 1-5, 
-"reason": "...", "paper_type": "...", "modalities": [...]}"""
+IMPORTANT: Output ONLY valid JSON. No explanations, no thinking tokens, no markdown. Just the JSON object."""
 
     payload = {
         "model": model,
@@ -477,7 +479,8 @@ Output JSON: {"relevant": true/false, "summary": [...], "tags": [...], "relevanc
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": text}
         ],
-        "temperature": temperature
+        "temperature": temperature,
+        "response_format": {"type": "json_object"}
     }
 
     try:
