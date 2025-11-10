@@ -455,15 +455,22 @@ def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1,
 
     # Optimized prompt to reduce token usage while maintaining essential instructions
     if feed_type == "web3-security":
-        system_prompt = """Assess if this paper directly addresses Web3, blockchain, or smart contract security.
+        system_prompt = """Assess if this paper directly addresses vulnerabilities in smart contracts, blockchains, or Web3 systems.
 
-Relevant topics: smart contract vulnerabilities (reentrancy, integer overflow, access control), DeFi security (flash loans, MEV, oracle manipulation),
-blockchain consensus security, cryptographic protocols, zero-knowledge proofs, Web3 privacy (mixers, privacy coins, decentralized identity),
-cryptocurrency security (wallet security, exchange security, blockchain attacks), smart contract auditing, formal verification,
-bridge security, Layer 2 security, cross-chain security, blockchain forensics.
+ONLY RELEVANT if the paper:
+- Identifies, analyzes, or prevents vulnerabilities in smart contracts (e.g., reentrancy, integer overflow, access control flaws)
+- Studies security flaws in DeFi protocols (e.g., flash loan exploits, MEV attacks, oracle manipulation)
+- Analyzes blockchain consensus vulnerabilities or attacks (e.g., 51% attacks, selfish mining, double-spending)
+- Develops tools for smart contract security (e.g., auditing tools, formal verification, vulnerability detection)
+- Examines bridge vulnerabilities, Layer 2 security flaws, or cross-chain attack vectors
+- Studies cryptocurrency wallet/exchange security vulnerabilities or blockchain attack techniques
 
-NOT relevant: General blockchain papers without security focus, cryptocurrency trading/economics without security aspects,
-blockchain applications without security considerations.
+NOT RELEVANT:
+- Papers using blockchain as a data management layer or infrastructure for other purposes (e.g., "blockchain for IoT security", "blockchain-based access control")
+- General privacy technologies that happen to use blockchain (e.g., decentralized identity without vulnerability focus)
+- Cryptocurrency trading, economics, or market analysis without security vulnerability aspects
+- Blockchain applications without vulnerability or security flaw analysis
+- Papers about blockchain benefits, performance, or general system design without security vulnerability focus
 
 If relevant (score ≥3/5):
 - Summary (2-4 bullet points)
@@ -482,7 +489,13 @@ IMPORTANT: Output ONLY valid JSON. No explanations, no thinking tokens, no markd
 Relevant topics: LLM red teaming, jailbreaking, prompt injection, adversarial prompting, model extraction,
 data poisoning, privacy attacks, alignment, robustness, safety evaluation, security standards.
 
-NOT relevant: General AI/ML papers, AI applications without security focus, AI ethics without security aspects.
+NOT relevant:
+- General AI/ML papers without security focus
+- AI applications without security focus
+- AI ethics without security aspects
+- Federated learning papers (unless specifically about security attacks on federated learning)
+- Federated unlearning papers
+- Distributed machine learning without security vulnerability focus
 
 If relevant (score ≥3/5):
 - Summary (2-4 bullet points)
@@ -561,16 +574,23 @@ def quick_assess_relevance(text: str, api_key: str, temperature: float = 0.1, mo
     headers = create_openrouter_client(api_key)
 
     if feed_type == "web3-security":
-        system_prompt = """Determine if this paper is potentially relevant to Web3, blockchain, or smart contract security.
-Key topics: smart contract vulnerabilities, DeFi security, blockchain consensus security, cryptographic protocols,
-zero-knowledge proofs, Web3 privacy, cryptocurrency security, wallet security, exchange security, blockchain attacks,
-smart contract auditing, formal verification, reentrancy attacks, MEV, bridge security, Layer 2 security.
+        system_prompt = """Determine if this paper is about vulnerabilities in smart contracts, blockchains, or Web3 systems.
+
+ONLY "yes" if about: smart contract vulnerabilities, DeFi security flaws, blockchain consensus attacks,
+security auditing tools, formal verification, exploit analysis, vulnerability detection,
+wallet/exchange security vulnerabilities, bridge attacks, Layer 2 security flaws.
+
+"no" if: using blockchain as infrastructure for other purposes, general privacy tech,
+trading/economics, blockchain applications without vulnerability focus.
 
 Respond with ONLY "yes" or "no"."""
     else:
         system_prompt = """Determine if this paper is potentially relevant to AI security, safety, or red teaming.
-Key topics: LLM security, red teaming, jailbreaking, prompt injection, adversarial attacks, model extraction,
-data poisoning, privacy attacks, alignment, robustness, safety evaluation, security standards.
+
+ONLY "yes" if about: LLM security, red teaming, jailbreaking, prompt injection, adversarial attacks,
+model extraction, data poisoning, privacy attacks, alignment, robustness, safety evaluation, security standards.
+
+"no" if: general AI/ML without security, federated learning, federated unlearning, distributed ML without security focus.
 
 Respond with ONLY "yes" or "no"."""
 
