@@ -1,7 +1,9 @@
 # update_rss.py
 
 import os
+import sys
 import time
+import argparse
 import feedparser
 import requests
 from datetime import datetime, timezone, timedelta
@@ -32,12 +34,41 @@ FEEDS = [
     "https://aclanthology.org/papers/index.xml",
 ]
 
+# Configuration for different feed types
+FEED_CONFIGS = {
+    "ai-security": {
+        "title": "AI Security Paper Digest",
+        "description": "Curated papers on AI security from ArXiv and ACL",
+        "output_file": "rss.xml",
+        "collection_name": "ai_security_papers",
+        "feed_type": "ai-security"
+    },
+    "web3-security": {
+        "title": "Web3 Security Paper Digest",
+        "description": "Curated papers on Web3, blockchain, and smart contract security from ArXiv and ACL",
+        "output_file": "web3_security_rss.xml",
+        "collection_name": "web3_security_papers",
+        "feed_type": "web3-security"
+    }
+}
+
+
+def parse_arguments():
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(
+        description="Generate RSS feed for security papers")
+    parser.add_argument(
+        "--feed-type",
+        type=str,
+        choices=["ai-security", "web3-security"],
+        default="ai-security",
+        help="Type of security feed to generate (default: ai-security)"
+    )
+    return parser.parse_args()
+
+
 # Token usage tracking
 total_tokens = 0
-
-# Initialize Qdrant client
-qdrant_client = init_qdrant_client()
-ensure_collection_exists(qdrant_client)
 
 
 def fetch_papers():
@@ -60,11 +91,11 @@ def fetch_papers():
     return entries
 
 
-def build_rss_feed(relevant_papers):
+def build_rss_feed(relevant_papers, config):
     fg = FeedGenerator()
-    fg.title("AI Security Paper Digest")
+    fg.title(config["title"])
     fg.link(href=RSS_FEED_URL)
-    fg.description("Curated papers on AI security from ArXiv and ACL")
+    fg.description(config["description"])
 
     for paper in relevant_papers:
         fe = fg.add_entry()
@@ -127,10 +158,10 @@ def build_rss_feed(relevant_papers):
 
         fe.guid(paper["url"])
 
-    fg.rss_file("rss.xml")
+    fg.rss_file(config["output_file"])
 
 
-def process_paper(paper: dict) -> dict:
+def process_paper(paper: dict, feed_type: str = "ai-security") -> dict:
     """Process a paper and prepare it for storage."""
     paper_data = {
         "title": paper.get("title", ""),
@@ -168,7 +199,8 @@ def process_paper(paper: dict) -> dict:
             text=text,
             api_key=OPENROUTER_API_KEY,
             temperature=TEMPERATURE,
-            model=DETAILED_ASSESSMENT_MODEL
+            model=DETAILED_ASSESSMENT_MODEL,
+            feed_type=feed_type
         )
 
     if result.get("relevant", False):
@@ -183,7 +215,7 @@ def process_paper(paper: dict) -> dict:
     return paper_data
 
 
-def process_papers(raw_papers):
+def process_papers(raw_papers, feed_type: str, collection_name: str, qdrant_client):
     global total_tokens
     relevant = []
     current_date = datetime.now(timezone.utc).date()
@@ -239,7 +271,7 @@ def process_papers(raw_papers):
         print(f"\n📅 Processing paper published on: {date}")
         print(f"📄 Title: {title}")
 
-        if paper_exists(qdrant_client, url):
+        if paper_exists(qdrant_client, url, collection_name):
             print(f"⏭️ Already exists: {title}")
             continue
 
@@ -248,7 +280,7 @@ def process_papers(raw_papers):
         # STAGE 1: Quick assessment with cheaper model
         print(f"🔍 Quick relevance assessment...")
         potentially_relevant, quick_tokens = quick_assess_relevance(
-            fulltext, OPENROUTER_API_KEY, temperature=TEMPERATURE, model=QUICK_ASSESSMENT_MODEL)
+            fulltext, OPENROUTER_API_KEY, temperature=TEMPERATURE, model=QUICK_ASSESSMENT_MODEL, feed_type=feed_type)
         quick_assessment_tokens += quick_tokens
 
         if not potentially_relevant:
@@ -269,7 +301,7 @@ def process_papers(raw_papers):
             time.sleep(delay_time)
 
         result, detailed_tokens = assess_relevance_and_tags(
-            assessment_text, OPENROUTER_API_KEY, temperature=TEMPERATURE, model=DETAILED_ASSESSMENT_MODEL)
+            assessment_text, OPENROUTER_API_KEY, temperature=TEMPERATURE, model=DETAILED_ASSESSMENT_MODEL, feed_type=feed_type)
         detailed_assessment_tokens += detailed_tokens
 
         if not result["relevant"]:
@@ -292,13 +324,13 @@ def process_papers(raw_papers):
             "code_repository": ""
         }
 
-        row = process_paper(paper_dict)
+        row = process_paper(paper_dict, feed_type=feed_type)
 
         # Ensure code repository is empty string if not present
         if "code_repository" not in row or row["code_repository"] == "None":
             row["code_repository"] = ""
 
-        insert_paper(qdrant_client, row)
+        insert_paper(qdrant_client, row, collection_name)
         relevant.append(row)
         # Rate limiting is now handled automatically by the new system
 
@@ -396,18 +428,34 @@ def estimate_cost(tokens, model=None):
 
 
 def main():
+    # Parse command-line arguments
+    args = parse_arguments()
+    feed_type = args.feed_type
+
+    # Get configuration for the selected feed type
+    config = FEED_CONFIGS[feed_type]
+    collection_name = config["collection_name"]
+
+    print(f"🔧 Generating {config['title']}...")
+    print(f"📁 Using collection: {collection_name}")
+    print(f"📄 Output file: {config['output_file']}")
+
     # Update daily limit for paid users
     update_daily_limit_for_paid_user()
+
+    # Initialize Qdrant client and ensure collection exists
+    qdrant_client = init_qdrant_client()
+    ensure_collection_exists(qdrant_client, collection_name)
 
     print("🔄 Fetching RSS feeds...")
     papers = fetch_papers()
     print(f"📚 Found {len(papers)} papers")
 
     print("🧠 Filtering papers...")
-    results = process_papers(papers)
+    results = process_papers(papers, feed_type, collection_name, qdrant_client)
 
     print(f"📝 Generating RSS feed with {len(results)} papers...")
-    build_rss_feed(results)
+    build_rss_feed(results, config)
 
     cost = estimate_cost(total_tokens, DETAILED_ASSESSMENT_MODEL)
     print(

@@ -449,12 +449,35 @@ def clean_and_extract_json(response_text: str) -> dict:
 
 
 @cached_llm_call
-def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4o") -> Tuple[Dict[str, Any], int]:
+def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4o", feed_type: str = "ai-security") -> Tuple[Dict[str, Any], int]:
     """Assess if a paper is relevant and extract tags using OpenRouter."""
     headers = create_openrouter_client(api_key)
 
     # Optimized prompt to reduce token usage while maintaining essential instructions
-    system_prompt = """Assess if this paper directly addresses AI security, safety, or red teaming.
+    if feed_type == "web3-security":
+        system_prompt = """Assess if this paper directly addresses Web3, blockchain, or smart contract security.
+
+Relevant topics: smart contract vulnerabilities (reentrancy, integer overflow, access control), DeFi security (flash loans, MEV, oracle manipulation),
+blockchain consensus security, cryptographic protocols, zero-knowledge proofs, Web3 privacy (mixers, privacy coins, decentralized identity),
+cryptocurrency security (wallet security, exchange security, blockchain attacks), smart contract auditing, formal verification,
+bridge security, Layer 2 security, cross-chain security, blockchain forensics.
+
+NOT relevant: General blockchain papers without security focus, cryptocurrency trading/economics without security aspects,
+blockchain applications without security considerations.
+
+If relevant (score ≥3/5):
+- Summary (2-4 bullet points)
+- 3-5 tags
+- Relevance score (1-5)
+- Brief reason for score
+- Paper type (Research/Survey/Benchmarking/Position/Other)
+- Modalities (Text/Image/Video/Audio/Multimodal/Other)
+
+If not relevant: {"relevant": false}
+
+IMPORTANT: Output ONLY valid JSON. No explanations, no thinking tokens, no markdown. Just the JSON object."""
+    else:
+        system_prompt = """Assess if this paper directly addresses AI security, safety, or red teaming.
 
 Relevant topics: LLM red teaming, jailbreaking, prompt injection, adversarial prompting, model extraction,
 data poisoning, privacy attacks, alignment, robustness, safety evaluation, security standards.
@@ -516,32 +539,41 @@ IMPORTANT: Output ONLY valid JSON. No explanations, no thinking tokens, no markd
 
 
 @cached_llm_call
-def quick_assess_relevance(text: str, api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4.1-nano") -> Tuple[bool, int]:
+def quick_assess_relevance(text: str, api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4.1-nano", feed_type: str = "ai-security") -> Tuple[bool, int]:
     """Quick assessment of paper relevance using a smaller, cheaper model.
-    
+
     This function performs a fast initial screening to determine if a paper is potentially
     relevant to AI security, safety, or red teaming. It uses a smaller, cheaper model
     to reduce costs for the initial filtering stage.
-    
+
     Args:
         text: The paper title and abstract
         api_key: OpenRouter API key
         temperature: Temperature for the model (default: 0.1)
         model: Model to use (default: openai/gpt-4.1-nano)
-        
+        feed_type: Type of feed to assess for (default: ai-security)
+
     Returns:
         Tuple containing:
         - Boolean indicating if the paper is potentially relevant
         - Number of tokens used
     """
     headers = create_openrouter_client(api_key)
-    
-    system_prompt = """Determine if this paper is potentially relevant to AI security, safety, or red teaming.
-Key topics: LLM security, red teaming, jailbreaking, prompt injection, adversarial attacks, model extraction, 
+
+    if feed_type == "web3-security":
+        system_prompt = """Determine if this paper is potentially relevant to Web3, blockchain, or smart contract security.
+Key topics: smart contract vulnerabilities, DeFi security, blockchain consensus security, cryptographic protocols,
+zero-knowledge proofs, Web3 privacy, cryptocurrency security, wallet security, exchange security, blockchain attacks,
+smart contract auditing, formal verification, reentrancy attacks, MEV, bridge security, Layer 2 security.
+
+Respond with ONLY "yes" or "no"."""
+    else:
+        system_prompt = """Determine if this paper is potentially relevant to AI security, safety, or red teaming.
+Key topics: LLM security, red teaming, jailbreaking, prompt injection, adversarial attacks, model extraction,
 data poisoning, privacy attacks, alignment, robustness, safety evaluation, security standards.
 
 Respond with ONLY "yes" or "no"."""
-    
+
     payload = {
         "model": model,
         "messages": [
@@ -550,7 +582,7 @@ Respond with ONLY "yes" or "no"."""
         ],
         "temperature": temperature
     }
-    
+
     try:
         response = make_rate_limited_request(
             f"{OPENROUTER_BASE_URL}/chat/completions",
@@ -560,7 +592,7 @@ Respond with ONLY "yes" or "no"."""
         result_data = response.json()
         result = result_data["choices"][0]["message"]["content"].lower().strip()
         token_count = result_data["usage"]["total_tokens"]
-        
+
         return "yes" in result, token_count
     except Exception as e:
         print(f"❌ Error in quick relevance assessment: {str(e)}")

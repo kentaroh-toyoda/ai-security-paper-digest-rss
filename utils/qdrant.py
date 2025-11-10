@@ -10,7 +10,7 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
-COLLECTION_NAME = "ai_security_papers"
+DEFAULT_COLLECTION_NAME = "ai_security_papers"
 
 
 def init_qdrant_client() -> QdrantClient:
@@ -25,16 +25,16 @@ def init_qdrant_client() -> QdrantClient:
     return QdrantClient(url=url, api_key=api_key)
 
 
-def ensure_collection_exists(client: QdrantClient) -> None:
+def ensure_collection_exists(client: QdrantClient, collection_name: str = DEFAULT_COLLECTION_NAME) -> None:
     """Ensure the collection exists in Qdrant with updated schema indexes."""
     try:
         # Create collection if it doesn't exist
         collections = client.get_collections().collections
         collection_names = [collection.name for collection in collections]
 
-        if COLLECTION_NAME not in collection_names:
+        if collection_name not in collection_names:
             client.create_collection(
-                collection_name=COLLECTION_NAME,
+                collection_name=collection_name,
                 vectors_config={
                     "default": models.VectorParams(
                         size=384,  # sentence-transformers/all-MiniLM-L6-v2 dimension
@@ -42,81 +42,81 @@ def ensure_collection_exists(client: QdrantClient) -> None:
                     )
                 }
             )
-            print(f"Created collection: {COLLECTION_NAME}")
+            print(f"Created collection: {collection_name}")
 
             # Create indexes for metadata fields with new schema
             client.create_payload_index(
-                collection_name=COLLECTION_NAME,
+                collection_name=collection_name,
                 field_name="metadata.title",
                 field_schema="keyword"
             )
             print("Created index for metadata.title field")
 
             client.create_payload_index(
-                collection_name=COLLECTION_NAME,
+                collection_name=collection_name,
                 field_name="metadata.url",
                 field_schema="keyword"
             )
             print("Created index for metadata.url field")
 
             client.create_payload_index(
-                collection_name=COLLECTION_NAME,
+                collection_name=collection_name,
                 field_name="metadata.authors",
                 field_schema="keyword"
             )
             print("Created index for metadata.authors field")
 
             client.create_payload_index(
-                collection_name=COLLECTION_NAME,
+                collection_name=collection_name,
                 field_name="metadata.topics",
                 field_schema="keyword"
             )
             print("Created index for metadata.topics field")
 
             client.create_payload_index(
-                collection_name=COLLECTION_NAME,
+                collection_name=collection_name,
                 field_name="metadata.modalities",
                 field_schema="keyword"
             )
             print("Created index for metadata.modalities field")
 
             client.create_payload_index(
-                collection_name=COLLECTION_NAME,
+                collection_name=collection_name,
                 field_name="metadata.star",
                 field_schema="bool"
             )
             print("Created index for metadata.star field")
 
             client.create_payload_index(
-                collection_name=COLLECTION_NAME,
+                collection_name=collection_name,
                 field_name="metadata.paper_type",
                 field_schema="keyword"
             )
             print("Created index for metadata.paper_type field")
 
             client.create_payload_index(
-                collection_name=COLLECTION_NAME,
+                collection_name=collection_name,
                 field_name="metadata.source",
                 field_schema="keyword"
             )
             print("Created index for metadata.source field")
 
             client.create_payload_index(
-                collection_name=COLLECTION_NAME,
+                collection_name=collection_name,
                 field_name="metadata.published_date",
                 field_schema="datetime"
             )
             print("Created index for metadata.published_date field")
 
             client.create_payload_index(
-                collection_name=COLLECTION_NAME,
+                collection_name=collection_name,
                 field_name="metadata.relevance_score",
                 field_schema="integer"
             )
             print("Created index for metadata.relevance_score field")
 
         else:
-            print(f"Collection {COLLECTION_NAME} already exists")
+            print(f"Collection {collection_name} already exists")
 
             # Create indexes for metadata fields if they don't exist
             index_configs = [
@@ -135,7 +135,7 @@ def ensure_collection_exists(client: QdrantClient) -> None:
             for field_name, field_schema in index_configs:
                 try:
                     client.create_payload_index(
-                        collection_name=COLLECTION_NAME,
+                        collection_name=collection_name,
                         field_name=field_name,
                         field_schema=field_schema
                     )
@@ -157,10 +157,10 @@ def generate_point_id(url: str) -> str:
     return str(uuid.uuid5(uuid.NAMESPACE_URL, url))
 
 
-def paper_exists(client: QdrantClient, paper_url: str) -> bool:
+def paper_exists(client: QdrantClient, paper_url: str, collection_name: str = DEFAULT_COLLECTION_NAME) -> bool:
     """Check if a paper with the given URL already exists."""
     response = client.scroll(
-        collection_name=COLLECTION_NAME,
+        collection_name=collection_name,
         scroll_filter=models.Filter(
             must=[
                 models.FieldCondition(
@@ -177,7 +177,7 @@ def paper_exists(client: QdrantClient, paper_url: str) -> bool:
 
 
 
-def insert_paper(client: QdrantClient, paper_data: Dict[str, Any]) -> bool:
+def insert_paper(client: QdrantClient, paper_data: Dict[str, Any], collection_name: str = DEFAULT_COLLECTION_NAME) -> bool:
     """Insert a paper into Qdrant with the new schema."""
     try:
         # Prepare metadata payload according to the new schema
@@ -223,7 +223,7 @@ def insert_paper(client: QdrantClient, paper_data: Dict[str, Any]) -> bool:
         )
 
         client.upsert(
-            collection_name=COLLECTION_NAME,
+            collection_name=collection_name,
             points=[point]
         )
         print(f"✅ Added to Qdrant with new schema: {paper_data.get('title', 'Unknown paper')}")

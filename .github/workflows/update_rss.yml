@@ -75,14 +75,17 @@ jobs:
             exit 1
           fi
 
-      - name: Run daily digest script
-        run: python update_rss.py
+      - name: Run AI security digest script
+        run: python update_rss.py --feed-type ai-security
 
-      - name: Git commit and push RSS file
+      - name: Run Web3 security digest script
+        run: python update_rss.py --feed-type web3-security
+
+      - name: Git commit and push RSS files
         run: |
           git config --global user.name "AI Security Paper Digest Bot"
           git config --global user.email "bot@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${GH_PAT}@github.com/${{ github.repository }}
-          git add rss.xml
-          git commit -m "Auto-update RSS feed" || echo "No changes to commit"
+          git add rss.xml web3_security_rss.xml
+          git commit -m "Auto-update RSS feeds" || echo "No changes to commit"
           git push origin HEAD:main || (echo 'Retrying in 10s...' && sleep 10 && git push origin HEAD:main)
