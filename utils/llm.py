@@ -539,11 +539,16 @@ IMPORTANT: Output ONLY valid JSON. No explanations, no thinking tokens, no markd
         
         # Use the improved JSON extraction function
         result_dict = clean_and_extract_json(result)
-        
+
+        # Ensure the result has a 'relevant' key - if missing, default to False
+        if "relevant" not in result_dict:
+            print(f"⚠️ Warning: API response missing 'relevant' key. Response: {result[:500]}...")
+            result_dict["relevant"] = False
+
         # Add cost information to the result for display
         if cost > 0:
             print(f"💰 Relevance assessment cost: {format_cost(cost)}")
-        
+
         return result_dict, total_tokens
 
     except Exception as e:
