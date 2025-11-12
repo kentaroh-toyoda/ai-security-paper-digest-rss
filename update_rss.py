@@ -271,9 +271,10 @@ def process_papers(raw_papers, feed_type: str, collection_name: str, qdrant_clie
         print(f"\n📅 Processing paper published on: {date}")
         print(f"📄 Title: {title}")
 
-        if paper_exists(qdrant_client, url, collection_name):
-            print(f"⏭️ Already exists: {title}")
-            continue
+        # Skip Qdrant duplicate check (disabled due to vector configuration issues)
+        # if paper_exists(qdrant_client, url, collection_name):
+        #     print(f"⏭️ Already exists: {title}")
+        #     continue
 
         fulltext = f"Title: {title}\nAbstract: {abstract}\nURL: {url}"
 
@@ -330,7 +331,8 @@ def process_papers(raw_papers, feed_type: str, collection_name: str, qdrant_clie
         if "code_repository" not in row or row["code_repository"] == "None":
             row["code_repository"] = ""
 
-        insert_paper(qdrant_client, row, collection_name)
+        # Skip Qdrant insertion to avoid vector configuration errors
+        # insert_paper(qdrant_client, row, collection_name)
         relevant.append(row)
         # Rate limiting is now handled automatically by the new system
 
