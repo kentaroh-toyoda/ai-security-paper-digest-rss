@@ -484,18 +484,22 @@ If not relevant: {"relevant": false}
 
 IMPORTANT: Output ONLY valid JSON. No explanations, no thinking tokens, no markdown. Just the JSON object."""
     else:
-        system_prompt = """Assess if this paper directly addresses AI security, safety, or red teaming.
+        system_prompt = """Assess if this paper is about AI SECURITY VULNERABILITIES, ATTACKS, or DEFENSES.
 
-Relevant topics: LLM red teaming, jailbreaking, prompt injection, adversarial prompting, model extraction,
-data poisoning, privacy attacks, alignment, robustness, safety evaluation, security standards.
+ONLY RELEVANT if the paper:
+- Studies attack methods: jailbreaking, prompt injection, adversarial examples, model extraction, data poisoning, backdoors, trojan attacks
+- Develops defense mechanisms: guardrails, safety mechanisms, attack detection/prevention, robustness techniques, input validation
+- Performs red teaming: systematically testing models for vulnerabilities, adversarial safety evaluation
+- Analyzes privacy vulnerabilities: membership inference, model inversion, training data extraction, unintended memorization
+- Develops security tools: vulnerability scanners, automated red teaming systems, security benchmarks WITH attack scenarios
 
-NOT relevant:
-- General AI/ML papers without security focus
-- AI applications without security focus
-- AI ethics without security aspects
-- Federated learning papers (unless specifically about security attacks on federated learning)
-- Federated unlearning papers
-- Distributed machine learning without security vulnerability focus
+NOT RELEVANT:
+- General AI capabilities, performance benchmarks, or domain applications (medical, video, legal, etc.) without security/attack analysis
+- General alignment, helpfulness, or capability improvements without vulnerability/attack focus
+- AI ethics, fairness, bias, or responsibility without specific security vulnerability analysis
+- General reasoning, chain-of-thought, or prompting techniques without adversarial/security context
+- Federated/distributed learning, model compression, efficiency, unlearning without security attack analysis
+- Any paper where security/attacks are not the PRIMARY focus
 
 If relevant (score ≥3/5):
 - Summary (2-4 bullet points)
@@ -590,12 +594,19 @@ trading/economics, blockchain applications without vulnerability focus.
 
 Respond with ONLY "yes" or "no"."""
     else:
-        system_prompt = """Determine if this paper is potentially relevant to AI security, safety, or red teaming.
+        system_prompt = """Determine if this paper is about AI SECURITY VULNERABILITIES, ATTACKS, or DEFENSES.
 
-ONLY "yes" if about: LLM security, red teaming, jailbreaking, prompt injection, adversarial attacks,
-model extraction, data poisoning, privacy attacks, alignment, robustness, safety evaluation, security standards.
+ONLY "yes" if the paper studies:
+- Attacks: jailbreaking, prompt injection, adversarial examples, model extraction, data poisoning, backdoors
+- Defenses: guardrails, safety mechanisms, attack detection, robustness techniques
+- Red teaming: testing models for vulnerabilities, safety evaluation with adversarial intent
+- Privacy attacks: membership inference, model inversion, data extraction from models
 
-"no" if: general AI/ML without security, federated learning, federated unlearning, distributed ML without security focus.
+"no" if:
+- General AI capabilities, benchmarks, or applications (medical, video, etc.) WITHOUT security/attack focus
+- General AI ethics, fairness, or bias WITHOUT security vulnerability aspects
+- Federated/distributed learning, unlearning, or other ML techniques WITHOUT security focus
+- AI alignment or safety WITHOUT discussing specific vulnerabilities or attacks
 
 Respond with ONLY "yes" or "no"."""
 
