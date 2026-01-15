@@ -445,9 +445,14 @@ def main():
     # Update daily limit for paid users
     update_daily_limit_for_paid_user()
 
-    # Initialize Qdrant client and ensure collection exists
-    qdrant_client = init_qdrant_client()
-    ensure_collection_exists(qdrant_client, collection_name)
+    # Initialize Qdrant client and ensure collection exists (if configured)
+    qdrant_client = None
+    if QDRANT_API_URL and QDRANT_API_KEY:
+        qdrant_client = init_qdrant_client()
+        ensure_collection_exists(qdrant_client, collection_name)
+        print("✅ Qdrant client initialized")
+    else:
+        print("⚠️  Qdrant not configured, skipping vector database storage")
 
     print("🔄 Fetching RSS feeds...")
     papers = fetch_papers()
