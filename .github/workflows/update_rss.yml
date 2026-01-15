@@ -11,13 +11,12 @@ jobs:
     env:
       GH_PAT: ${{ secrets.GH_PAT }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      OPENALEX_EMAIL: ${{ secrets.OPENALEX_EMAIL }}
-      QDRANT_API_URL: ${{ secrets.QDRANT_API_URL }}
-      QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
-      RSS_FEED_URL: ${{ secrets.RSS_FEED_URL }}
-      DETAILED_ASSESSMENT_MODEL: ${{ secrets.DETAILED_ASSESSMENT_MODEL || 'moonshotai/kimi-dev-72b:free' }}
-      QUICK_ASSESSMENT_MODEL: ${{ secrets.QUICK_ASSESSMENT_MODEL || 'openai/gpt-4.1-nano' }}
-      TEMPERATURE: ${{ secrets.TEMPERATURE || '0.1' }}
+      # QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
+      # QDRANT_API_URL: ${{ vars.QDRANT_API_URL }}
+      RSS_FEED_URL: ${{ vars.RSS_FEED_URL }}
+      DETAILED_ASSESSMENT_MODEL: ${{ vars.DETAILED_ASSESSMENT_MODEL || 'moonshotai/kimi-dev-72b:free' }}
+      QUICK_ASSESSMENT_MODEL: ${{ vars.QUICK_ASSESSMENT_MODEL || 'openai/gpt-4.1-nano' }}
+      TEMPERATURE: ${{ vars.TEMPERATURE || '0.1' }}
 
     steps:
       - name: Checkout repo without default credentials
@@ -68,12 +67,12 @@ jobs:
 
           echo "✅ OpenRouter API key is valid"
 
-      - name: Check Qdrant credentials
-        run: |
-          if [ -z "$QDRANT_API_URL" ] || [ -z "$QDRANT_API_KEY" ]; then
-            echo "::error::QDRANT_API_URL and QDRANT_API_KEY must be set in repository secrets."
-            exit 1
-          fi
+      # - name: Check Qdrant credentials
+      #   run: |
+      #     if [ -z "$QDRANT_API_URL" ] || [ -z "$QDRANT_API_KEY" ]; then
+      #       echo "::error::QDRANT_API_URL and QDRANT_API_KEY must be set in repository secrets."
+      #       exit 1
+      #     fi
 
       - name: Run AI security digest script
         run: python update_rss.py --feed-type ai-security
