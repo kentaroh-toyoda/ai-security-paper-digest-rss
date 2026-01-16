@@ -689,10 +689,10 @@ def get_embedding_model():
 
 def generate_embeddings(text: str) -> List[float]:
     """Generate embeddings for the given text.
-    
+
     Args:
         text: The text to generate embeddings for
-        
+
     Returns:
         List of floats representing the embedding vector
     """
