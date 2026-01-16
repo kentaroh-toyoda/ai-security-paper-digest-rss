@@ -40,7 +40,8 @@ pip install -r requirements.txt
 OPENROUTER_API_KEY=your_openrouter_api_key
 QDRANT_API_URL=your_qdrant_cloud_url
 QDRANT_API_KEY=your_qdrant_cloud_api_key
-RSS_FEED_URL=your_rss_feed_url
+AI_SECURITY_RSS_URL=your_ai_security_rss_feed_url
+WEB3_SECURITY_RSS_URL=your_web3_security_rss_feed_url
 QUICK_ASSESSMENT_MODEL=openai/gpt-4.1-nano  # Model for initial quick filtering
 DETAILED_ASSESSMENT_MODEL=openai/gpt-4.1-mini  # Model for detailed analysis
 TEMPERATURE=0.1              # Optional: specify the temperature (0.0 to 1.0)

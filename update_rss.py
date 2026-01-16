@@ -41,14 +41,16 @@ FEED_CONFIGS = {
         "description": "Curated papers on AI security from ArXiv and ACL",
         "output_file": "rss.xml",
         "collection_name": "ai_security_papers",
-        "feed_type": "ai-security"
+        "feed_type": "ai-security",
+        "feed_url": os.getenv("AI_SECURITY_RSS_URL")
     },
     "web3-security": {
         "title": "Web3 Security Paper Digest",
         "description": "Curated papers on Web3, blockchain, and smart contract security from ArXiv and ACL",
         "output_file": "web3_security_rss.xml",
         "collection_name": "web3_security_papers",
-        "feed_type": "web3-security"
+        "feed_type": "web3-security",
+        "feed_url": os.getenv("WEB3_SECURITY_RSS_URL")
     }
 }
 
@@ -94,7 +96,7 @@ def fetch_papers():
 def build_rss_feed(relevant_papers, config):
     fg = FeedGenerator()
     fg.title(config["title"])
-    fg.link(href=RSS_FEED_URL)
+    fg.link(href=config["feed_url"])
     fg.description(config["description"])
 
     for paper in relevant_papers:

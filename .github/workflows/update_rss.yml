@@ -13,7 +13,8 @@ jobs:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       # QDRANT_API_KEY: ${{ secrets.QDRANT_API_KEY }}
       # QDRANT_API_URL: ${{ vars.QDRANT_API_URL }}
-      RSS_FEED_URL: ${{ vars.RSS_FEED_URL }}
+      AI_SECURITY_RSS_URL: ${{ vars.AI_SECURITY_RSS_URL }}
+      WEB3_SECURITY_RSS_URL: ${{ vars.WEB3_SECURITY_RSS_URL }}
       DETAILED_ASSESSMENT_MODEL: ${{ vars.DETAILED_ASSESSMENT_MODEL || 'moonshotai/kimi-dev-72b:free' }}
       QUICK_ASSESSMENT_MODEL: ${{ vars.QUICK_ASSESSMENT_MODEL || 'openai/gpt-4.1-nano' }}
       TEMPERATURE: ${{ vars.TEMPERATURE || '0.1' }}
