@@ -487,18 +487,18 @@ IMPORTANT: Output ONLY valid JSON. No explanations, no thinking tokens, no markd
         system_prompt = """Assess if this paper is about AI SECURITY VULNERABILITIES, ATTACKS, or DEFENSES.
 
 ONLY RELEVANT if the paper:
-- Studies attack methods: jailbreaking, prompt injection, adversarial examples, model extraction, data poisoning, backdoors, trojan attacks
+- Studies attack methods: jailbreaking, prompt injection, adversarial examples, model extraction, data poisoning, 
 - Develops defense mechanisms: guardrails, safety mechanisms, attack detection/prevention, robustness techniques, input validation
 - Performs red teaming: systematically testing models for vulnerabilities, adversarial safety evaluation
 - Analyzes privacy vulnerabilities: membership inference, model inversion, training data extraction, unintended memorization
 - Develops security tools: vulnerability scanners, automated red teaming systems, security benchmarks WITH attack scenarios
 
 NOT RELEVANT:
-- General AI capabilities, performance benchmarks, or domain applications (medical, video, legal, etc.) without security/attack analysis
+- General AI capabilities, performance benchmarks, or domain applications (medical, IoT, legal, etc.) without security/attack analysis
 - General alignment, helpfulness, or capability improvements without vulnerability/attack focus
 - AI ethics, fairness, bias, or responsibility without specific security vulnerability analysis
 - General reasoning, chain-of-thought, or prompting techniques without adversarial/security context
-- Federated/distributed learning, model compression, efficiency, unlearning without security attack analysis
+- Federated/distributed learning, model compression, efficiency, unlearning
 - Any paper where security/attacks are not the PRIMARY focus
 
 If relevant (score ≥3/5):
@@ -597,15 +597,15 @@ Respond with ONLY "yes" or "no"."""
         system_prompt = """Determine if this paper is about AI SECURITY VULNERABILITIES, ATTACKS, or DEFENSES.
 
 ONLY "yes" if the paper studies:
-- Attacks: jailbreaking, prompt injection, adversarial examples, model extraction, data poisoning, backdoors
+- Attacks: jailbreaking, prompt injection, adversarial examples, model extraction, data poisoning,
 - Defenses: guardrails, safety mechanisms, attack detection, robustness techniques
 - Red teaming: testing models for vulnerabilities, safety evaluation with adversarial intent
 - Privacy attacks: membership inference, model inversion, data extraction from models
 
 "no" if:
-- General AI capabilities, benchmarks, or applications (medical, video, etc.) WITHOUT security/attack focus
+- General AI capabilities, benchmarks, or applications (medical, IoT, legal, etc.) WITHOUT security/attack focus
 - General AI ethics, fairness, or bias WITHOUT security vulnerability aspects
-- Federated/distributed learning, unlearning, or other ML techniques WITHOUT security focus
+- Federated/distributed learning, unlearning
 - AI alignment or safety WITHOUT discussing specific vulnerabilities or attacks
 
 Respond with ONLY "yes" or "no"."""
