@@ -2,7 +2,7 @@ name: Daily RSS Feed Update
 
 on:
   schedule:
-    - cron: "0 22 * * *" # Runs at 6AM SGT (22:00 UTC)
+    - cron: "0 19 * * *" # Runs at 3AM SGT (19:00 UTC)
   workflow_dispatch:
 
 jobs:
