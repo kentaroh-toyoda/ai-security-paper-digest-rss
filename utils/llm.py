@@ -530,8 +530,14 @@ IMPORTANT: Output ONLY valid JSON. No explanations, no thinking tokens, no markd
             payload=payload
         )
         result_data = response.json()
+
+        if "choices" not in result_data or not result_data["choices"]:
+            error_msg = result_data.get("error", {}).get("message", "Unknown error")
+            print(f"❌ API returned no choices in relevance assessment: {error_msg}")
+            return {"relevant": False}, 0
+
         result = result_data["choices"][0]["message"]["content"]
-        
+
         # Extract token usage
         usage = result_data.get("usage", {})
         input_tokens = usage.get("prompt_tokens", 0)
@@ -626,8 +632,14 @@ Respond with ONLY "yes" or "no"."""
             payload=payload
         )
         result_data = response.json()
+
+        if "choices" not in result_data or not result_data["choices"]:
+            error_msg = result_data.get("error", {}).get("message", "Unknown error")
+            print(f"❌ API returned no choices in quick assessment: {error_msg}")
+            return False, 0
+
         result = result_data["choices"][0]["message"]["content"].lower().strip()
-        token_count = result_data["usage"]["total_tokens"]
+        token_count = result_data.get("usage", {}).get("total_tokens", 0)
 
         return "yes" in result, token_count
     except Exception as e:
