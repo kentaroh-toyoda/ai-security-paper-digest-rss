@@ -533,7 +533,10 @@ IMPORTANT: Output ONLY valid JSON. No explanations, no thinking tokens, no markd
 
         if "choices" not in result_data or not result_data["choices"]:
             error_msg = result_data.get("error", {}).get("message", "Unknown error")
+            error_code = result_data.get("error", {}).get("code", "N/A")
             print(f"❌ API returned no choices in relevance assessment: {error_msg}")
+            print(f"   HTTP {response.status_code} | error code: {error_code} | model: {model}")
+            print(f"   Full response: {json.dumps(result_data)[:500]}")
             return {"relevant": False}, 0
 
         result = result_data["choices"][0]["message"]["content"]
@@ -625,26 +628,37 @@ Respond with ONLY "yes" or "no"."""
         "temperature": temperature
     }
 
-    try:
-        response = make_rate_limited_request(
-            f"{OPENROUTER_BASE_URL}/chat/completions",
-            headers=headers,
-            payload=payload
-        )
-        result_data = response.json()
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            response = make_rate_limited_request(
+                f"{OPENROUTER_BASE_URL}/chat/completions",
+                headers=headers,
+                payload=payload
+            )
+            result_data = response.json()
 
-        if "choices" not in result_data or not result_data["choices"]:
-            error_msg = result_data.get("error", {}).get("message", "Unknown error")
-            print(f"❌ API returned no choices in quick assessment: {error_msg}")
+            if "choices" not in result_data or not result_data["choices"]:
+                error_msg = result_data.get("error", {}).get("message", "Unknown error")
+                error_code = result_data.get("error", {}).get("code", "N/A")
+                if attempt < max_retries - 1:
+                    print(f"⚠️ No choices in quick assessment (attempt {attempt + 1}/{max_retries}): {error_msg}. Retrying...")
+                    print(f"   HTTP {response.status_code} | error code: {error_code} | model: {model}")
+                    print(f"   Full response: {json.dumps(result_data)[:500]}")
+                    time.sleep(2 ** attempt)
+                    continue
+                print(f"❌ API returned no choices in quick assessment after {max_retries} attempts: {error_msg}")
+                print(f"   HTTP {response.status_code} | error code: {error_code} | model: {model}")
+                print(f"   Full response: {json.dumps(result_data)[:500]}")
+                return False, 0
+
+            result = result_data["choices"][0]["message"]["content"].lower().strip()
+            token_count = result_data.get("usage", {}).get("total_tokens", 0)
+
+            return "yes" in result, token_count
+        except Exception as e:
+            print(f"❌ Error in quick relevance assessment: {str(e)}")
             return False, 0
-
-        result = result_data["choices"][0]["message"]["content"].lower().strip()
-        token_count = result_data.get("usage", {}).get("total_tokens", 0)
-
-        return "yes" in result, token_count
-    except Exception as e:
-        print(f"❌ Error in quick relevance assessment: {str(e)}")
-        return False, 0
 
 
 def calculate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
