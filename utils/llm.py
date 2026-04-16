@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 from typing import Tuple, Dict, Any, List
 from datetime import datetime, timezone, timedelta
 import re
-from sentence_transformers import SentenceTransformer
 
 # Load environment variables
 load_dotenv()
@@ -703,25 +702,3 @@ def format_cost(cost: float) -> str:
         return f"${cost:.3f}"
 
 
-# Initialize the embedding model once as a global variable for efficiency
-_embedding_model = None
-
-def get_embedding_model():
-    """Get or initialize the embedding model."""
-    global _embedding_model
-    if _embedding_model is None:
-        _embedding_model = SentenceTransformer('sentence-transformers/all-MiniLM-L6-v2')
-    return _embedding_model
-
-def generate_embeddings(text: str) -> List[float]:
-    """Generate embeddings for the given text.
-
-    Args:
-        text: The text to generate embeddings for
-
-    Returns:
-        List of floats representing the embedding vector
-    """
-    model = get_embedding_model()
-    embedding = model.encode(text, convert_to_numpy=True)
-    return embedding.tolist()  # Convert numpy array to list for JSON serialization

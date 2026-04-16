@@ -10,14 +10,15 @@ from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from feedgen.feed import FeedGenerator
 from utils.llm import assess_relevance_and_tags, check_rate_limit_status, get_rate_limiter, update_daily_limit_for_paid_user, quick_assess_relevance
-from utils.qdrant import init_qdrant_client, ensure_collection_exists, paper_exists, insert_paper
+from utils.zotero import init_zotero_client, ensure_collection_exists, paper_exists, insert_paper
 
 load_dotenv()
 
 # Environment variables
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-QDRANT_API_URL = os.getenv("QDRANT_API_URL")
-QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+ZOTERO_LIBRARY_ID = os.getenv("ZOTERO_LIBRARY_ID")
+ZOTERO_API_KEY = os.getenv("ZOTERO_API_KEY")
+ZOTERO_LIBRARY_TYPE = os.getenv("ZOTERO_LIBRARY_TYPE", "user")
 RSS_FEED_URL = os.getenv("RSS_FEED_URL")
 DETAILED_ASSESSMENT_MODEL = os.getenv(
     "DETAILED_ASSESSMENT_MODEL", "openai/gpt-4.1-mini")
@@ -40,7 +41,7 @@ FEED_CONFIGS = {
         "title": "AI Security Paper Digest",
         "description": "Curated papers on AI security from ArXiv and ACL",
         "output_file": "rss.xml",
-        "collection_name": "ai_security_papers",
+        "collection_name": "AI Security Papers",
         "feed_type": "ai-security",
         "feed_url": os.getenv("AI_SECURITY_RSS_URL")
     },
@@ -48,7 +49,7 @@ FEED_CONFIGS = {
         "title": "Web3 Security Paper Digest",
         "description": "Curated papers on Web3, blockchain, and smart contract security from ArXiv and ACL",
         "output_file": "web3_security_rss.xml",
-        "collection_name": "web3_security_papers",
+        "collection_name": "Web3 Security Papers",
         "feed_type": "web3-security",
         "feed_url": os.getenv("WEB3_SECURITY_RSS_URL")
     }
@@ -217,7 +218,7 @@ def process_paper(paper: dict, feed_type: str = "ai-security") -> dict:
     return paper_data
 
 
-def process_papers(raw_papers, feed_type: str, collection_name: str, qdrant_client):
+def process_papers(raw_papers, feed_type: str, collection_name: str, zotero_client, collection_key=None):
     global total_tokens
     relevant = []
     current_date = datetime.now(timezone.utc).date()
@@ -273,10 +274,9 @@ def process_papers(raw_papers, feed_type: str, collection_name: str, qdrant_clie
         print(f"\n📅 Processing paper published on: {date}")
         print(f"📄 Title: {title}")
 
-        # Skip Qdrant duplicate check (disabled due to vector configuration issues)
-        # if paper_exists(qdrant_client, url, collection_name):
-        #     print(f"⏭️ Already exists: {title}")
-        #     continue
+        if zotero_client and collection_key and paper_exists(zotero_client, url, collection_key):
+            print(f"⏭️ Already exists in Zotero: {title}")
+            continue
 
         fulltext = f"Title: {title}\nAbstract: {abstract}\nURL: {url}"
 
@@ -333,8 +333,8 @@ def process_papers(raw_papers, feed_type: str, collection_name: str, qdrant_clie
         if "code_repository" not in row or row["code_repository"] == "None":
             row["code_repository"] = ""
 
-        # Skip Qdrant insertion to avoid vector configuration errors
-        # insert_paper(qdrant_client, row, collection_name)
+        if zotero_client and collection_key:
+            insert_paper(zotero_client, row, collection_key)
         relevant.append(row)
         # Rate limiting is now handled automatically by the new system
 
@@ -447,21 +447,22 @@ def main():
     # Update daily limit for paid users
     update_daily_limit_for_paid_user()
 
-    # Initialize Qdrant client and ensure collection exists (if configured)
-    qdrant_client = None
-    if QDRANT_API_URL and QDRANT_API_KEY:
-        qdrant_client = init_qdrant_client()
-        ensure_collection_exists(qdrant_client, collection_name)
-        print("✅ Qdrant client initialized")
+    # Initialize Zotero client and ensure collection exists (if configured)
+    zotero_client = None
+    collection_key = None
+    if ZOTERO_LIBRARY_ID and ZOTERO_API_KEY:
+        zotero_client = init_zotero_client()
+        collection_key = ensure_collection_exists(zotero_client, collection_name)
+        print("✅ Zotero client initialized")
     else:
-        print("⚠️  Qdrant not configured, skipping vector database storage")
+        print("⚠️  Zotero not configured, skipping metadata storage")
 
     print("🔄 Fetching RSS feeds...")
     papers = fetch_papers()
     print(f"📚 Found {len(papers)} papers")
 
     print("🧠 Filtering papers...")
-    results = process_papers(papers, feed_type, collection_name, qdrant_client)
+    results = process_papers(papers, feed_type, collection_name, zotero_client, collection_key)
 
     print(f"📝 Generating RSS feed with {len(results)} papers...")
     build_rss_feed(results, config)

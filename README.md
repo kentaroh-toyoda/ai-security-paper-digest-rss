@@ -21,8 +21,8 @@ Focuses on papers related to Web3, blockchain, and smart contract security, incl
 - **Two-Stage Assessment**: Cost-efficient filtering with a quick assessment followed by detailed analysis
 - **Intelligent Filtering**: AI-powered relevance assessment and tagging
 - **RSS Feed Generation**: Generate RSS feeds of relevant papers
-- **Vector Storage**: Store and search papers using Qdrant
-- **Automated Workflow**: Runs daily via GitHub Actions
+- **Metadata Storage**: Store papers in Zotero library via API
+- **Automated Workflow**: Runs daily via GitLab CI/CD
 
 ## Setup
 
@@ -38,8 +38,9 @@ pip install -r requirements.txt
 
 ```
 OPENROUTER_API_KEY=your_openrouter_api_key
-QDRANT_API_URL=your_qdrant_cloud_url
-QDRANT_API_KEY=your_qdrant_cloud_api_key
+ZOTERO_LIBRARY_ID=your_zotero_library_id
+ZOTERO_API_KEY=your_zotero_api_key
+ZOTERO_LIBRARY_TYPE=user
 AI_SECURITY_RSS_URL=your_ai_security_rss_feed_url
 WEB3_SECURITY_RSS_URL=your_web3_security_rss_feed_url
 QUICK_ASSESSMENT_MODEL=openai/gpt-4.1-nano  # Model for initial quick filtering
@@ -72,7 +73,7 @@ This will:
 1. Fetch recent papers from ArXiv feeds (cs.AI, cs.LG, cs.CL, cs.CV) and ACL Anthology
 2. Perform a quick initial assessment using a cost-efficient model
 3. Perform detailed assessment on promising papers using a more powerful model
-4. Store relevant papers in separate Qdrant collections (`ai_security_papers` or `web3_security_papers`)
+4. Store relevant papers in Zotero collections (`AI Security Papers` or `Web3 Security Papers`)
 5. Generate the appropriate RSS feed (`rss.xml` or `web3_security_rss.xml`)
 
 **Cost Optimization**: The two-stage assessment process significantly reduces costs:
@@ -86,12 +87,12 @@ This tool integrates with:
 
 - **OpenRouter**: For AI processing and relevance assessment
 - **ArXiv**: For preprint discovery
-- **Qdrant**: For vector storage and retrieval
-- **GitHub Actions**: For automated daily execution
+- **Zotero**: For paper metadata storage and organization
+- **GitLab CI/CD**: For automated daily execution
 
 ## Files Overview
 
 - `update_rss.py`: Update RSS feed from ArXiv with two-stage assessment
 - `utils/llm.py`: AI processing and rate limiting
-- `utils/qdrant.py`: Vector database operations
-- `.github/workflows/update_rss.yml`: GitHub Actions workflow for daily execution
+- `utils/zotero.py`: Zotero API operations
+- `.gitlab-ci.yml`: GitLab CI/CD pipeline for daily execution
