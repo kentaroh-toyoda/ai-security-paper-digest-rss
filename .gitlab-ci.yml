@@ -29,9 +29,9 @@ update-rss-feeds:
     - python update_rss.py --feed-type web3-security
     - |
       git config user.name "AI Security Paper Digest Bot"
-      git config user.email "bot@users.noreply.gitlab.com"
-      git remote set-url origin "https://oauth2:${GITLAB_PAT}@gitlab.com/${CI_PROJECT_PATH}.git"
+      git config user.email "bot@users.noreply.github.com"
+      git remote add github "https://x-access-token:${GH_PAT}@github.com/${GITHUB_REPO}.git"
       git add rss.xml web3_security_rss.xml
       git diff --cached --quiet && echo "No changes to commit" && exit 0
       git commit -m "Auto-update RSS feeds"
-      git push origin HEAD:main || (echo "Retrying push in 10s..." && sleep 10 && git pull --rebase origin main && git push origin HEAD:main)
+      git push github HEAD:main || (echo "Retrying push in 10s..." && sleep 10 && git pull --rebase github main && git push github HEAD:main)
