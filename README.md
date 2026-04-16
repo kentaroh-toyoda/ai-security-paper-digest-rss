@@ -37,7 +37,8 @@ pip install -r requirements.txt
 2. Ensure your `.env` file has the following variables:
 
 ```
-OPENROUTER_API_KEY=your_openrouter_api_key
+API_KEY=your_llm_api_key
+BASE_URL=https://your-litellm-host/v1  # or https://openrouter.ai/api/v1
 ZOTERO_LIBRARY_ID=your_zotero_library_id
 ZOTERO_API_KEY=your_zotero_api_key
 ZOTERO_LIBRARY_TYPE=user
@@ -85,7 +86,7 @@ This will:
 
 This tool integrates with:
 
-- **OpenRouter**: For AI processing and relevance assessment
+- **LLM API**: For AI processing and relevance assessment (OpenRouter, LiteLLM, or any OpenAI-compatible API)
 - **ArXiv**: For preprint discovery
 - **Zotero**: For paper metadata storage and organization
 - **GitLab CI/CD**: For automated daily execution

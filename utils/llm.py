@@ -19,8 +19,8 @@ DEFAULT_MODEL = "openai/gpt-4.1"
 DEFAULT_MINI_MODEL = "openai/gpt-4.1-mini"
 DEFAULT_TEMPERATURE = 0.1
 
-# OpenRouter configuration
-OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+# LLM API configuration
+BASE_URL = os.getenv("BASE_URL", "https://openrouter.ai/api/v1")
 
 # Rate limiting configuration for free tier
 FREE_TIER_REQUESTS_PER_WINDOW = 20
@@ -29,9 +29,9 @@ FREE_TIER_DAILY_LIMIT = 50  # Default daily limit for free tier
 FREE_TIER_DAILY_LIMIT_PAID = 1000  # Daily limit if you've purchased 10+ credits
 SAFETY_MARGIN = 0.1  # 10% safety margin
 
-# OpenRouter pricing (per 1M tokens) - Updated as of Dec 2024
+# LLM pricing (per 1M tokens) - Updated as of Dec 2024
 # These are approximate rates and may change
-OPENROUTER_PRICING = {
+LLM_PRICING = {
     "openai/gpt-4o": {"input": 2.50, "output": 10.00},
     "openai/gpt-4o-mini": {"input": 0.15, "output": 0.60},
     "openai/gpt-4.1": {"input": 30.00, "output": 60.00},
@@ -112,7 +112,7 @@ class DailyRateLimiter:
 
 
 class RateLimiter:
-    """Rate limiter for OpenRouter API calls to respect free tier limits."""
+    """Rate limiter for LLM API calls to respect rate limits."""
 
     def __init__(self, requests_per_window=FREE_TIER_REQUESTS_PER_WINDOW,
                  window_seconds=FREE_TIER_WINDOW_SECONDS):
@@ -239,7 +239,7 @@ def is_free_model(model_name):
 def is_exempt_from_rate_limit(model_name):
     """Check if a model should be exempt from the rate limit counter.
     
-    Some models like gpt-4.1-nano are not counted toward the OpenRouter free tier limit.
+    Some models like gpt-4.1-nano are not counted toward the free tier limit.
     """
     exempt_models = [
         "openai/gpt-4.1-nano",
@@ -288,9 +288,9 @@ def make_rate_limited_request(url, headers, payload, max_retries=3, retry_delay=
                 print(f"⏱️ Rate limit hit on attempt {attempt + 1}. Waiting {retry_after} seconds...")
                 
                 if is_free:
-                    print(f"💡 You've reached the OpenRouter free tier limit (20 requests/minute).")
+                    print(f"💡 You've reached the API free tier limit (20 requests/minute).")
                 else:
-                    print(f"💡 You've reached the OpenRouter rate limit.")
+                    print(f"💡 You've reached the API rate limit.")
                 
                 time.sleep(retry_after)
                 continue
@@ -355,13 +355,11 @@ def check_rate_limit_status():
     return minute_status, daily_status
 
 
-def create_openrouter_client(api_key: str):
-    """Create an OpenRouter client using requests."""
+def create_api_client(api_key: str):
+    """Create an API client headers dict for LLM requests."""
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
-        "HTTP-Referer": "https://paper-digest.com",  # Replace with your domain
-        "X-Title": "Paper Digest"  # Replace with your app name
     }
     return headers
 
@@ -449,8 +447,8 @@ def clean_and_extract_json(response_text: str) -> dict:
 
 @cached_llm_call
 def assess_relevance_and_tags(text: str, api_key: str, temperature: float = 0.1, model: str = "openai/gpt-4o", feed_type: str = "ai-security") -> Tuple[Dict[str, Any], int]:
-    """Assess if a paper is relevant and extract tags using OpenRouter."""
-    headers = create_openrouter_client(api_key)
+    """Assess if a paper is relevant and extract tags using the LLM API."""
+    headers = create_api_client(api_key)
 
     # Optimized prompt to reduce token usage while maintaining essential instructions
     if feed_type == "web3-security":
@@ -524,7 +522,7 @@ IMPORTANT: Output ONLY valid JSON. No explanations, no thinking tokens, no markd
 
     try:
         response = make_rate_limited_request(
-            f"{OPENROUTER_BASE_URL}/chat/completions",
+            f"{BASE_URL}/chat/completions",
             headers=headers,
             payload=payload
         )
@@ -564,7 +562,7 @@ IMPORTANT: Output ONLY valid JSON. No explanations, no thinking tokens, no markd
         return result_dict, total_tokens
 
     except Exception as e:
-        print(f"❌ Error calling OpenRouter API: {str(e)}")
+        print(f"❌ Error calling LLM API: {str(e)}")
         return {"relevant": False}, 0
 
 
@@ -578,7 +576,7 @@ def quick_assess_relevance(text: str, api_key: str, temperature: float = 0.1, mo
 
     Args:
         text: The paper title and abstract
-        api_key: OpenRouter API key
+        api_key: LLM API key
         temperature: Temperature for the model (default: 0.1)
         model: Model to use (default: openai/gpt-4.1-nano)
         feed_type: Type of feed to assess for (default: ai-security)
@@ -588,7 +586,7 @@ def quick_assess_relevance(text: str, api_key: str, temperature: float = 0.1, mo
         - Boolean indicating if the paper is potentially relevant
         - Number of tokens used
     """
-    headers = create_openrouter_client(api_key)
+    headers = create_api_client(api_key)
 
     if feed_type == "web3-security":
         system_prompt = """Determine if this paper is about vulnerabilities in smart contracts, blockchains, or Web3 systems.
@@ -631,7 +629,7 @@ Respond with ONLY "yes" or "no"."""
     for attempt in range(max_retries):
         try:
             response = make_rate_limited_request(
-                f"{OPENROUTER_BASE_URL}/chat/completions",
+                f"{BASE_URL}/chat/completions",
                 headers=headers,
                 payload=payload
             )
@@ -671,11 +669,11 @@ def calculate_cost(input_tokens: int, output_tokens: int, model: str) -> float:
     Returns:
         Estimated cost in USD
     """
-    if model not in OPENROUTER_PRICING:
+    if model not in LLM_PRICING:
         # Default to GPT-4o pricing if model not found
-        pricing = OPENROUTER_PRICING.get("openai/gpt-4o", {"input": 2.50, "output": 10.00})
+        pricing = LLM_PRICING.get("openai/gpt-4o", {"input": 2.50, "output": 10.00})
     else:
-        pricing = OPENROUTER_PRICING[model]
+        pricing = LLM_PRICING[model]
     
     input_cost = (input_tokens / 1_000_000) * pricing["input"]
     output_cost = (output_tokens / 1_000_000) * pricing["output"]

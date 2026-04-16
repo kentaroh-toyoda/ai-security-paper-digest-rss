@@ -15,7 +15,7 @@ from utils.zotero import init_zotero_client, ensure_collection_exists, paper_exi
 load_dotenv()
 
 # Environment variables
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+API_KEY = os.getenv("API_KEY")
 ZOTERO_LIBRARY_ID = os.getenv("ZOTERO_LIBRARY_ID")
 ZOTERO_API_KEY = os.getenv("ZOTERO_API_KEY")
 ZOTERO_LIBRARY_TYPE = os.getenv("ZOTERO_LIBRARY_TYPE", "user")
@@ -200,7 +200,7 @@ def process_paper(paper: dict, feed_type: str = "ai-security") -> dict:
     if result is None:
         result, _ = assess_relevance_and_tags(
             text=text,
-            api_key=OPENROUTER_API_KEY,
+            api_key=API_KEY,
             temperature=TEMPERATURE,
             model=DETAILED_ASSESSMENT_MODEL,
             feed_type=feed_type
@@ -283,7 +283,7 @@ def process_papers(raw_papers, feed_type: str, collection_name: str, zotero_clie
         # STAGE 1: Quick assessment with cheaper model
         print(f"🔍 Quick relevance assessment...")
         potentially_relevant, quick_tokens = quick_assess_relevance(
-            fulltext, OPENROUTER_API_KEY, temperature=TEMPERATURE, model=QUICK_ASSESSMENT_MODEL, feed_type=feed_type)
+            fulltext, API_KEY, temperature=TEMPERATURE, model=QUICK_ASSESSMENT_MODEL, feed_type=feed_type)
         quick_assessment_tokens += quick_tokens
 
         if not potentially_relevant:
@@ -304,7 +304,7 @@ def process_papers(raw_papers, feed_type: str, collection_name: str, zotero_clie
             time.sleep(delay_time)
 
         result, detailed_tokens = assess_relevance_and_tags(
-            assessment_text, OPENROUTER_API_KEY, temperature=TEMPERATURE, model=DETAILED_ASSESSMENT_MODEL, feed_type=feed_type)
+            assessment_text, API_KEY, temperature=TEMPERATURE, model=DETAILED_ASSESSMENT_MODEL, feed_type=feed_type)
         detailed_assessment_tokens += detailed_tokens
 
         if not result["relevant"]:
@@ -384,7 +384,7 @@ def estimate_cost(tokens, model=None):
         model = DETAILED_ASSESSMENT_MODEL
 
     # Pricing per 1K tokens (input/output combined for simplicity)
-    # Based on OpenRouter pricing as of 2024
+    # Based on LLM pricing as of 2024
     pricing = {
         # OpenAI models
         "openai/gpt-4o": 0.005,  # $5.00 per 1M tokens

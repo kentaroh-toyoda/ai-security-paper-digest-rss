@@ -19,12 +19,12 @@ update-rss-feeds:
     - pip install -r requirements.txt
   script:
     - |
-      echo "Checking OpenRouter API key..."
-      if [ -z "$OPENROUTER_API_KEY" ]; then
-        echo "ERROR: OPENROUTER_API_KEY is not set."
+      echo "Checking API key..."
+      if [ -z "$API_KEY" ]; then
+        echo "ERROR: API_KEY is not set."
         exit 1
       fi
-      echo "API key is set (length: ${#OPENROUTER_API_KEY})"
+      echo "API key is set (length: ${#API_KEY})"
     - python update_rss.py --feed-type ai-security
     - python update_rss.py --feed-type web3-security
     - |
