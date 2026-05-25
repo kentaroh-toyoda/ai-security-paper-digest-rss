@@ -9,8 +9,9 @@ import requests
 from datetime import datetime, timezone, timedelta
 from dotenv import load_dotenv
 from feedgen.feed import FeedGenerator
-from utils.llm import assess_relevance_and_tags, check_rate_limit_status, get_rate_limiter, update_daily_limit_for_paid_user, quick_assess_relevance
+from utils.llm import assess_relevance_and_tags, check_rate_limit_status, get_rate_limiter, update_daily_limit_for_paid_user, quick_assess_relevance, verify_scholar_identity
 from utils.zotero import init_zotero_client, ensure_collection_exists, paper_exists, insert_paper
+from utils.scholars import load_scholars, build_index, match_authors
 
 load_dotenv()
 
@@ -25,6 +26,11 @@ DETAILED_ASSESSMENT_MODEL = os.getenv(
 QUICK_ASSESSMENT_MODEL = os.getenv(
     "QUICK_ASSESSMENT_MODEL", "openai/gpt-4.1-nano")
 TEMPERATURE = float(os.getenv("TEMPERATURE", "0.1"))
+
+# Scholar list (only papers authored by these scholars survive the filter).
+# Loaded once at import time from config/scholars.yaml.
+SCHOLARS = load_scholars()
+SCHOLAR_INDEX = build_index(SCHOLARS)
 
 # Constants
 FEEDS = [
@@ -128,6 +134,14 @@ def build_rss_feed(relevant_papers, config):
         description.append("<ul>")
         if "authors" in paper:
             description.append(f"<li>Authors: {paper['authors']}</li>")
+        if paper.get("matched_scholars"):
+            scholar_strs = [
+                f"{s['name']} ({s['sub_area']}, {s['affiliation']})"
+                for s in paper["matched_scholars"]
+            ]
+            description.append(
+                f"<li>Tracked scholars: {'; '.join(scholar_strs)}</li>"
+            )
         if "topics" in paper:
             description.append(f"<li>Tags: {paper['topics']}</li>")
         if "relevance" in paper:
@@ -183,7 +197,8 @@ def process_paper(paper: dict, feed_type: str = "ai-security") -> dict:
         "relevance_reason": "",
         "paper_type": "Other",
         "modalities": [],
-        "star": False  # New field, default to False
+        "star": False,  # New field, default to False
+        "matched_scholars": paper.get("matched_scholars", []),
     }
 
     # Two-stage assessment process is now handled in process_papers
@@ -278,6 +293,44 @@ def process_papers(raw_papers, feed_type: str, collection_name: str, zotero_clie
             print(f"⏭️ Already exists in Zotero: {title}")
             continue
 
+        # STAGE 0a: Cheap author-name pre-filter against the tracked-scholars list.
+        # Only applied to ai-security (web3-security has its own scope).
+        verified_scholars = []
+        if feed_type == "ai-security":
+            name_matches = match_authors(authors, SCHOLAR_INDEX)
+            if not name_matches:
+                print(f"🚫 No tracked scholars: {title}")
+                continue
+
+            # STAGE 0b: LLM affiliation check to disambiguate common names (Bo Li, Yu Su, ...).
+            for scholar in name_matches:
+                is_match, vtokens = verify_scholar_identity(
+                    scholar_name=scholar.name,
+                    scholar_affiliation=scholar.affiliation,
+                    paper_title=title,
+                    paper_abstract=abstract,
+                    paper_authors=authors,
+                    api_key=API_KEY,
+                    model=QUICK_ASSESSMENT_MODEL,
+                )
+                quick_assessment_tokens += vtokens
+                if is_match:
+                    verified_scholars.append(scholar)
+                else:
+                    print(
+                        f"   ↳ affiliation check ruled out {scholar.name} "
+                        f"({scholar.affiliation})"
+                    )
+
+            if not verified_scholars:
+                print(f"🚫 Scholar name matched but affiliation check failed: {title}")
+                continue
+
+            print(
+                f"✓ Tracked scholar(s): "
+                f"{', '.join(s.name + ' [' + s.sub_area + ']' for s in verified_scholars)}"
+            )
+
         fulltext = f"Title: {title}\nAbstract: {abstract}\nURL: {url}"
 
         # STAGE 1: Quick assessment with cheaper model
@@ -324,7 +377,15 @@ def process_papers(raw_papers, feed_type: str, collection_name: str, zotero_clie
             "arxiv_id": paper_id,
             "cited_by_count": 0,
             "publication_type": publication_type,
-            "code_repository": ""
+            "code_repository": "",
+            "matched_scholars": [
+                {
+                    "name": s.name,
+                    "affiliation": s.affiliation,
+                    "sub_area": s.sub_area,
+                }
+                for s in verified_scholars
+            ],
         }
 
         row = process_paper(paper_dict, feed_type=feed_type)

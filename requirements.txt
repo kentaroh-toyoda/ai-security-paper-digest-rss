@@ -3,3 +3,4 @@ requests
 feedgen
 python-dotenv>=0.19.0
 pyzotero
+pyyaml

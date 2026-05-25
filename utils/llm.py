@@ -481,22 +481,23 @@ If not relevant: {"relevant": false}
 
 IMPORTANT: Output ONLY valid JSON. No explanations, no thinking tokens, no markdown. Just the JSON object."""
     else:
-        system_prompt = """Assess if this paper is about AI SECURITY VULNERABILITIES, ATTACKS, or DEFENSES.
+        system_prompt = """Assess if this paper is about LLM / AI-AGENT SECURITY or SAFETY.
 
-ONLY RELEVANT if the paper:
-- Studies attack methods: jailbreaking, prompt injection, adversarial examples, model extraction, data poisoning, 
-- Develops defense mechanisms: guardrails, safety mechanisms, attack detection/prevention, robustness techniques, input validation
-- Performs red teaming: systematically testing models for vulnerabilities, adversarial safety evaluation
-- Analyzes privacy vulnerabilities: membership inference, model inversion, training data extraction, unintended memorization
-- Develops security tools: vulnerability scanners, automated red teaming systems, security benchmarks WITH attack scenarios
+ONLY RELEVANT if the paper studies attacks, defenses, evaluations, or governance of:
+- LLM agents and tool use: prompt injection (direct & indirect), tool/function-call abuse, agent hijacking, autonomous-agent safety, multi-agent system security
+- LLM jailbreaks & red-teaming: jailbreak attacks/defenses, dangerous-capability evaluations, automated red teaming of LLMs/agents
+- Agent memory & RAG attacks: memory poisoning, RAG injection, retrieval corruption, context manipulation
+- LLM / agent privacy: membership inference on LLMs, training-data extraction, model inversion on LLMs, prompt leakage, unintended memorization in LLMs
+- Web / computer-use agent security: browser-agent attacks, GUI-agent exploits, sandbox escapes for autonomous agents
+- Agentic AI governance & policy: safety frameworks, deployment policy, oversight mechanisms for autonomous AI systems
 
 NOT RELEVANT:
-- General AI capabilities, performance benchmarks, or domain applications (medical, IoT, legal, etc.) without security/attack analysis
-- General alignment, helpfulness, or capability improvements without vulnerability/attack focus
-- AI ethics, fairness, bias, or responsibility without specific security vulnerability analysis
-- General reasoning, chain-of-thought, or prompting techniques without adversarial/security context
-- Federated/distributed learning, model compression, efficiency, unlearning
-- Any paper where security/attacks are not the PRIMARY focus
+- Classical adversarial examples on vision/speech classifiers (ResNet, CNN, ASR) without LLM/agent angle
+- Generic ML robustness, model compression, federated/distributed learning against non-LLM models
+- Image-classifier model extraction or membership inference on non-LLM models
+- General LLM capabilities, benchmarks, reasoning, or applications (medical/IoT/legal/code-gen) WITHOUT security/safety angle
+- AI fairness, bias, or ethics without specific security vulnerability or safety failure mode
+- Pure alignment/RLHF improvements without studying a vulnerability, attack, or safety failure
 
 If relevant (score ≥3/5):
 - Summary (2-4 bullet points)
@@ -600,19 +601,22 @@ trading/economics, blockchain applications without vulnerability focus.
 
 Respond with ONLY "yes" or "no"."""
     else:
-        system_prompt = """Determine if this paper is about AI SECURITY VULNERABILITIES, ATTACKS, or DEFENSES.
+        system_prompt = """Determine if this paper is about LLM / AI-AGENT SECURITY or SAFETY.
 
 ONLY "yes" if the paper studies:
-- Attacks: jailbreaking, prompt injection, adversarial examples, model extraction, data poisoning,
-- Defenses: guardrails, safety mechanisms, attack detection, robustness techniques
-- Red teaming: testing models for vulnerabilities, safety evaluation with adversarial intent
-- Privacy attacks: membership inference, model inversion, data extraction from models
+- LLM agents & tool use: prompt injection (direct/indirect), tool-call abuse, agent hijacking, multi-agent security
+- LLM jailbreaks & red-teaming: jailbreak attacks/defenses, dangerous-capability evals, automated red teaming
+- Agent memory / RAG attacks: memory poisoning, RAG injection, retrieval corruption
+- LLM / agent privacy: membership inference on LLMs, training-data extraction, prompt leakage
+- Web / computer-use agent security: browser-agent or GUI-agent exploits, autonomous-agent sandbox escapes
+- Agentic AI governance & policy: oversight, deployment policy, safety frameworks for autonomous AI
 
 "no" if:
-- General AI capabilities, benchmarks, or applications (medical, IoT, legal, etc.) WITHOUT security/attack focus
-- General AI ethics, fairness, or bias WITHOUT security vulnerability aspects
-- Federated/distributed learning, unlearning
-- AI alignment or safety WITHOUT discussing specific vulnerabilities or attacks
+- Classical adversarial examples on vision/speech classifiers (no LLM/agent angle)
+- Generic ML robustness, model compression, federated learning on non-LLM models
+- General LLM capabilities / benchmarks / applications WITHOUT security or safety focus
+- AI fairness / bias / ethics WITHOUT a specific vulnerability or safety failure
+- Pure alignment / RLHF improvements WITHOUT studying an attack or failure mode
 
 Respond with ONLY "yes" or "no"."""
 
@@ -656,6 +660,81 @@ Respond with ONLY "yes" or "no"."""
         except Exception as e:
             print(f"❌ Error in quick relevance assessment: {str(e)}")
             return False, 0
+
+
+def verify_scholar_identity(
+    scholar_name: str,
+    scholar_affiliation: str,
+    paper_title: str,
+    paper_abstract: str,
+    paper_authors: List[str],
+    api_key: str,
+    temperature: float = 0.0,
+    model: str = "openai/gpt-4.1-nano",
+) -> Tuple[bool, int]:
+    """Use a cheap LLM call to confirm a name-matched author is the tracked scholar.
+
+    Common scholar names (Bo Li, Yu Su, Daniel Kang, etc.) match many unrelated
+    authors on arXiv. This call passes the scholar's affiliation along with the
+    paper context and asks whether the named author is plausibly the same person.
+
+    Returns (is_same_person, tokens_used). Defaults to False on API failure.
+    """
+    headers = create_api_client(api_key)
+
+    coauthors = ", ".join(a for a in paper_authors if a) or "(unknown)"
+    system_prompt = (
+        "You verify whether an author on a paper is a specific tracked scholar in AI/LLM "
+        "security & safety, given that the scholar's name and the paper's author name match. "
+        "The tracked scholar works on AI/LLM security, AI safety, agent security, jailbreaks, "
+        "prompt injection, privacy attacks on ML, or AI governance. Many common names "
+        "(e.g. Bo Li, Yu Su, Daniel Kang, Mario Fritz) map to multiple unrelated researchers; "
+        "you must distinguish them.\n\n"
+        "Answer 'yes' ONLY if there is positive evidence the author is the tracked scholar:\n"
+        " - the paper topic is within AI/ML/LLM security or safety (broadly construed), AND\n"
+        " - the topic is consistent with the scholar's affiliation/research area, OR\n"
+        " - the author list contains a known collaborator suggesting the right person, OR\n"
+        " - the abstract mentions an affiliation matching the tracked one.\n\n"
+        "Answer 'no' if:\n"
+        " - the paper is outside AI/ML (e.g. mechanical engineering, biology, finance),\n"
+        " - the paper is in an unrelated AI subfield with no security/safety angle and the name is common,\n"
+        " - there is no positive evidence linking this author to the tracked scholar.\n\n"
+        "Default to 'no' when uncertain on common names. Respond with ONLY 'yes' or 'no'."
+    )
+    user_content = (
+        f"Tracked scholar: {scholar_name}\n"
+        f"Affiliation: {scholar_affiliation}\n\n"
+        f"Paper title: {paper_title}\n"
+        f"Paper authors: {coauthors}\n"
+        f"Paper abstract: {paper_abstract}"
+    )
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_content},
+        ],
+        "temperature": temperature,
+    }
+
+    try:
+        response = make_rate_limited_request(
+            f"{BASE_URL}/chat/completions", headers=headers, payload=payload
+        )
+        result_data = response.json()
+        if "choices" not in result_data or not result_data["choices"]:
+            print(
+                f"⚠️ verify_scholar_identity: no choices for {scholar_name} "
+                f"(HTTP {response.status_code})"
+            )
+            return False, 0
+        result = result_data["choices"][0]["message"]["content"].lower().strip()
+        tokens = result_data.get("usage", {}).get("total_tokens", 0)
+        return result.startswith("yes"), tokens
+    except Exception as e:
+        print(f"❌ Error in verify_scholar_identity for {scholar_name}: {e}")
+        return False, 0
 
 
 def calculate_cost(input_tokens: int, output_tokens: int, model: str) -> float:

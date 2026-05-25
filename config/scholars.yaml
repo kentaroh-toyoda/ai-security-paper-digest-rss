@@ -1,0 +1,168 @@
+# Vendored from sibling repo: key-ai-safety-security-papers-from-top-scholars/scholars.yaml
+# Re-sync manually when the upstream list changes.
+#
+# Structured source of truth for the daily digest pipeline.
+# Human-readable rationale and citations live in scholars.md.
+#
+# Fields:
+#   name             Canonical display name.
+#   affiliation      Used by the LLM for common-name disambiguation.
+#   sub_area         One of: prompt-injection | jailbreak-redteam |
+#                    memory-privacy | governance | web-agent.
+#   arxiv_authors    Name variants to query arXiv with (handles accents/initials).
+
+scholars:
+  # ── A. Prompt injection & tool-use security ──────────────────────────────
+  - name: "Dawn Song"
+    affiliation: "UC Berkeley, USA"
+    sub_area: "prompt-injection"
+    arxiv_authors: ["Dawn Song"]
+
+  - name: "Florian Tramèr"
+    affiliation: "ETH Zürich, Switzerland"
+    sub_area: "prompt-injection"
+    arxiv_authors: ["Florian Tramèr", "Florian Tramer"]
+
+  - name: "Sahar Abdelnabi"
+    affiliation: "ELLIS Institute / MPI Tübingen, Germany"
+    sub_area: "prompt-injection"
+    arxiv_authors: ["Sahar Abdelnabi"]
+
+  - name: "Mario Fritz"
+    affiliation: "CISPA Helmholtz Center for Information Security, Germany"
+    sub_area: "prompt-injection"
+    arxiv_authors: ["Mario Fritz"]
+
+  - name: "Daniel Kang"
+    affiliation: "UIUC, USA"
+    sub_area: "prompt-injection"
+    arxiv_authors: ["Daniel Kang"]
+
+  - name: "Earlence Fernandes"
+    affiliation: "UC San Diego, USA"
+    sub_area: "prompt-injection"
+    arxiv_authors: ["Earlence Fernandes"]
+
+  - name: "Eric Wallace"
+    affiliation: "OpenAI, USA"
+    sub_area: "prompt-injection"
+    arxiv_authors: ["Eric Wallace"]
+
+  - name: "Nicholas Carlini"
+    affiliation: "Anthropic, USA"
+    sub_area: "prompt-injection"
+    arxiv_authors: ["Nicholas Carlini"]
+
+  - name: "Neil Zhenqiang Gong"
+    affiliation: "Duke University, USA"
+    sub_area: "prompt-injection"
+    arxiv_authors: ["Neil Zhenqiang Gong", "Neil Gong"]
+
+  - name: "Chaowei Xiao"
+    affiliation: "Johns Hopkins University / NVIDIA, USA"
+    sub_area: "prompt-injection"
+    arxiv_authors: ["Chaowei Xiao"]
+
+  # ── B. Agent jailbreaks, red-teaming, dangerous-capability evals ─────────
+  - name: "Maksym Andriushchenko"
+    affiliation: "ELLIS Institute Tübingen / MPI for Intelligent Systems, Germany"
+    sub_area: "jailbreak-redteam"
+    arxiv_authors: ["Maksym Andriushchenko"]
+
+  - name: "Edoardo Debenedetti"
+    affiliation: "ETH Zürich, Switzerland"
+    sub_area: "jailbreak-redteam"
+    arxiv_authors: ["Edoardo Debenedetti"]
+
+  - name: "Andy Zou"
+    affiliation: "CMU / Gray Swan AI, USA"
+    sub_area: "jailbreak-redteam"
+    arxiv_authors: ["Andy Zou"]
+
+  - name: "Mantas Mazeika"
+    affiliation: "Center for AI Safety (CAIS), USA"
+    sub_area: "jailbreak-redteam"
+    arxiv_authors: ["Mantas Mazeika"]
+
+  - name: "Jacob Steinhardt"
+    affiliation: "UC Berkeley / Transluce, USA"
+    sub_area: "jailbreak-redteam"
+    arxiv_authors: ["Jacob Steinhardt"]
+
+  - name: "Beth Barnes"
+    affiliation: "METR, USA/UK"
+    sub_area: "jailbreak-redteam"
+    arxiv_authors: ["Beth Barnes"]
+
+  - name: "Mary Phuong"
+    affiliation: "Google DeepMind, UK"
+    sub_area: "jailbreak-redteam"
+    arxiv_authors: ["Mary Phuong"]
+
+  - name: "Marius Hobbhahn"
+    affiliation: "Apollo Research, UK/Germany"
+    sub_area: "jailbreak-redteam"
+    arxiv_authors: ["Marius Hobbhahn"]
+
+  # ── C. Memory / RAG attacks & agent privacy ──────────────────────────────
+  - name: "Bo Li"
+    affiliation: "University of Chicago, USA"
+    sub_area: "memory-privacy"
+    arxiv_authors: ["Bo Li"]
+
+  - name: "Vitaly Shmatikov"
+    affiliation: "Cornell Tech, USA"
+    sub_area: "memory-privacy"
+    arxiv_authors: ["Vitaly Shmatikov"]
+
+  - name: "Reza Shokri"
+    affiliation: "National University of Singapore (NUS), Singapore"
+    sub_area: "memory-privacy"
+    arxiv_authors: ["Reza Shokri"]
+
+  - name: "Niloofar Mireshghallah"
+    affiliation: "Meta FAIR / incoming CMU, USA"
+    sub_area: "memory-privacy"
+    arxiv_authors: ["Niloofar Mireshghallah", "Fatemehsadat Mireshghallah"]
+
+  - name: "Nicolas Papernot"
+    affiliation: "University of Toronto / Vector Institute / Canadian AISI, Canada"
+    sub_area: "memory-privacy"
+    arxiv_authors: ["Nicolas Papernot"]
+
+  - name: "Carmela Troncoso"
+    affiliation: "MPI for Security & Privacy / EPFL SPRING, Germany/Switzerland"
+    sub_area: "memory-privacy"
+    arxiv_authors: ["Carmela Troncoso"]
+
+  # ── D. Agentic AI policy & governance ────────────────────────────────────
+  - name: "Yoshua Bengio"
+    affiliation: "Mila / Université de Montréal / LawZero, Canada"
+    sub_area: "governance"
+    arxiv_authors: ["Yoshua Bengio"]
+
+  - name: "Yutaka Matsuo"
+    affiliation: "University of Tokyo, Japan"
+    sub_area: "governance"
+    arxiv_authors: ["Yutaka Matsuo"]
+
+  - name: "Helen Toner"
+    affiliation: "CSET (Georgetown), USA"
+    sub_area: "governance"
+    arxiv_authors: ["Helen Toner"]
+
+  - name: "Markus Anderljung"
+    affiliation: "GovAI (Oxford), UK"
+    sub_area: "governance"
+    arxiv_authors: ["Markus Anderljung"]
+
+  # ── E. Web / computer-use agent security ─────────────────────────────────
+  - name: "Yu Su"
+    affiliation: "Ohio State University, USA"
+    sub_area: "web-agent"
+    arxiv_authors: ["Yu Su"]
+
+  - name: "Xiangyu Qi"
+    affiliation: "Princeton University / Google DeepMind, USA"
+    sub_area: "web-agent"
+    arxiv_authors: ["Xiangyu Qi"]
