@@ -27,12 +27,30 @@ def ensure_collection_exists(zot, collection_name):
 
 
 def paper_exists(zot, paper_url, collection_key):
-    """Check if a paper with the given URL already exists in the collection."""
-    # Normalize URL for comparison
+    """Check if a paper with the given URL already exists in the collection.
+
+    On any unexpected response shape or API error, returns False rather than
+    crashing — the caller will simply attempt the insert, and Zotero will
+    handle true duplicates on its end.
+    """
     normalized = paper_url.replace("http://", "https://").rstrip("/")
-    results = zot.collection_items(collection_key, q=normalized, qmode="everything", limit=10)
+    try:
+        results = zot.collection_items(
+            collection_key, q=normalized, qmode="everything", limit=10
+        )
+    except Exception as e:
+        print(f"⚠️ Zotero search failed for {paper_url}: {e}")
+        return False
+
+    if not isinstance(results, list):
+        print(f"⚠️ Unexpected Zotero response type {type(results).__name__} for {paper_url}")
+        return False
+
     for item in results:
-        item_url = item.get("data", {}).get("url", "").replace("http://", "https://").rstrip("/")
+        if not isinstance(item, dict):
+            continue
+        data = item.get("data") if isinstance(item.get("data"), dict) else {}
+        item_url = (data.get("url") or "").replace("http://", "https://").rstrip("/")
         if item_url == normalized:
             return True
     return False
