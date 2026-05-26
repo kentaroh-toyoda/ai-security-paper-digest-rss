@@ -272,9 +272,9 @@ def make_rate_limited_request(url, headers, payload, max_retries=3, retry_delay=
             if is_free:
                 daily_limiter.check_and_record()
 
-            # Wait if necessary to respect rate limits
-            # Skip rate limiting for exempt models like gpt-4.1-nano
-            if not is_exempt:
+            # Preemptive client-side throttle is only needed for free-tier models
+            # (which enforce 20 req/min). Paid models rely on the 429 retry path below.
+            if is_free and not is_exempt:
                 rate_limiter.wait_if_needed()
 
             # Make the request
